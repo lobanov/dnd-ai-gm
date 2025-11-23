@@ -35,6 +35,7 @@ export const CLASS_PRESETS: Record<string, Stats> = {
 export const INITIAL_CHARACTER = {
     name: 'Adventurer',
     class: 'Fighter',
+    gender: 'Male',
     level: 1,
     hp: 10,
     maxHp: 10,

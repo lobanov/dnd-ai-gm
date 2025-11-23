@@ -19,6 +19,7 @@ export interface Item {
 export interface Character {
   name: string;
   class: string;
+  gender: string;
   level: number;
   hp: number;
   maxHp: number;
@@ -35,12 +36,17 @@ export interface Message {
   content: string;
   timestamp: number;
   meta?: {
-    type: 'roll' | 'narration' | 'dialogue';
+    type: 'roll' | 'narration' | 'dialogue' | 'tool';
     rollResult?: {
       dice: string;
       result: number;
       total: number;
     };
+    toolCalls?: Array<{
+      name: string;
+      arguments: any;
+      result: any;
+    }>;
   };
 }
 

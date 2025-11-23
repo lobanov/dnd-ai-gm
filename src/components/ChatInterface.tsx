@@ -28,8 +28,9 @@ export function ChatInterface() {
                     const initialPrompt = `The player is ${character.name}, a level ${character.level} ${character.class}.
 Please start the adventure by:
 1. Generating a brief, engaging backstory for this character based on their class.
-2. Describing the current setting and location in vivid detail.
-3. Welcoming the player and asking "What do you do?".`;
+2. Providing them with appropriate starting equipment for a ${character.class} using the update_inventory tool (e.g., weapons, armor, basic supplies, potions).
+3. Describing the current setting and location in vivid detail.
+4. Welcoming the player and asking "What do you do?".`;
 
                     const response = await fetch('/api/chat', {
                         method: 'POST',
@@ -38,7 +39,8 @@ Please start the adventure by:
                             messages: [{
                                 role: 'user',
                                 content: initialPrompt
-                            }]
+                            }],
+                            character: character  // Send character state
                         }),
                     });
 
@@ -103,8 +105,9 @@ Please start the adventure by:
                 const initialPrompt = `The player is ${character.name}, a level ${character.level} ${character.class}.
 Please start the adventure by:
 1. Generating a brief, engaging backstory for this character based on their class.
-2. Describing the current setting and location in vivid detail.
-3. Welcoming the player and asking "What do you do?".`;
+2. Providing them with appropriate starting equipment for a ${character.class} using the update_inventory tool (e.g., weapons, armor, basic supplies, potions).
+3. Describing the current setting and location in vivid detail.
+4. Welcoming the player and asking "What do you do?".`;
 
                 contextMessages.unshift({
                     role: 'user',
@@ -138,7 +141,10 @@ Please start the adventure by:
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: sanitizedMessages }),
+                body: JSON.stringify({
+                    messages: sanitizedMessages,
+                    character: character  // Send character state with every request
+                }),
             });
 
             if (!response.ok) throw new Error('Failed to get response');
@@ -150,10 +156,33 @@ Please start the adventure by:
                 role: 'assistant',
                 content: data.content,
                 timestamp: Date.now(),
-                meta: { type: 'narration' }
+                meta: data.toolCalls ? {
+                    type: 'tool',
+                    toolCalls: data.toolCalls
+                } : { type: 'narration' }
             };
 
             addMessage(aiMsg);
+
+            // Apply tool call effects to the character state
+            if (data.toolCalls) {
+                for (const toolCall of data.toolCalls) {
+                    if (toolCall.name === 'update_inventory' && toolCall.result.success) {
+                        if (toolCall.result.action === 'added') {
+                            const { addItem } = useGameStore.getState();
+                            addItem(toolCall.result.item);
+                        } else if (toolCall.result.action === 'removed') {
+                            const { character, updateCharacter } = useGameStore.getState();
+                            updateCharacter({
+                                inventory: character.inventory.filter(i => i.name !== toolCall.result.itemName)
+                            });
+                        }
+                    } else if (toolCall.name === 'update_character' && toolCall.result.success) {
+                        const { updateCharacter } = useGameStore.getState();
+                        updateCharacter(toolCall.result.updates);
+                    }
+                }
+            }
         } catch (error) {
             console.error(error);
             const errorMsg: Message = {
@@ -189,6 +218,37 @@ Please start the adventure by:
                                     : 'bg-slate-900 text-slate-300 border border-slate-800 font-serif leading-relaxed'
                                 }`}
                         >
+                            {/* Display tool calls if present */}
+                            {msg.meta?.toolCalls && msg.meta.toolCalls.length > 0 && (
+                                <div className="mb-3 space-y-2">
+                                    {msg.meta.toolCalls.map((toolCall, idx) => (
+                                        <div key={idx} className="bg-slate-950/50 border border-amber-900/30 rounded px-3 py-2 text-sm">
+                                            <div className="flex items-center gap-2 text-amber-400 font-mono">
+                                                <span className="text-amber-500">🛠️</span>
+                                                <span className="font-bold">{toolCall.name}</span>
+                                            </div>
+                                            {toolCall.name === 'roll_dice' && toolCall.result.description && (
+                                                <div className="mt-1 text-amber-300 flex items-center gap-2">
+                                                    <span className="text-xl">🎲</span>
+                                                    <span>{toolCall.result.description}</span>
+                                                </div>
+                                            )}
+                                            {toolCall.name === 'update_inventory' && toolCall.result.message && (
+                                                <div className="mt-1 text-blue-300 flex items-center gap-2">
+                                                    <span>{toolCall.result.action === 'added' ? '📦' : '❌'}</span>
+                                                    <span>{toolCall.result.message}</span>
+                                                </div>
+                                            )}
+                                            {toolCall.name === 'update_character' && toolCall.result.message && (
+                                                <div className="mt-1 text-green-300 flex items-center gap-2">
+                                                    <span>✨</span>
+                                                    <span>{toolCall.result.message}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             {msg.role === 'user' ? (
                                 msg.content
                             ) : (

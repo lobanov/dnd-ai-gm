@@ -4,11 +4,33 @@ import { CLASS_PRESETS, INITIAL_CHARACTER } from '@/lib/dnd-rules';
 import { Character } from '@/types/dnd';
 
 const CLASSES = Object.keys(CLASS_PRESETS);
+const GENDERS = ['Male', 'Female'];
 
 export function CharacterCreation() {
     const { setCharacter, startGame } = useGameStore();
     const [name, setName] = useState('');
     const [selectedClass, setSelectedClass] = useState(CLASSES[0]);
+    const [selectedGender, setSelectedGender] = useState(GENDERS[0]);
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    const handleGenerateName = async () => {
+        setIsGenerating(true);
+        try {
+            const response = await fetch('/api/generate-name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ characterClass: selectedClass, gender: selectedGender }),
+            });
+            const data = await response.json();
+            if (data.name) {
+                setName(data.name);
+            }
+        } catch (error) {
+            console.error('Failed to generate name:', error);
+        } finally {
+            setIsGenerating(false);
+        }
+    };
 
     const handleStart = () => {
         if (!name.trim()) return;
@@ -23,6 +45,7 @@ export function CharacterCreation() {
             ...INITIAL_CHARACTER,
             name: name.trim(),
             class: selectedClass,
+            gender: selectedGender,
             stats: stats,
             hp: hp,
             maxHp: hp,
@@ -41,7 +64,7 @@ export function CharacterCreation() {
                 </div>
 
                 <div className="space-y-4">
-                    <div>
+                    <div className="relative">
                         <label className="block text-sm font-medium text-slate-400 mb-1">Name</label>
                         <input
                             type="text"
@@ -50,6 +73,31 @@ export function CharacterCreation() {
                             className="w-full bg-slate-950 border border-slate-700 rounded px-4 py-2 focus:outline-none focus:border-amber-500 transition-colors"
                             placeholder="Enter character name..."
                         />
+                        <button
+                            onClick={handleGenerateName}
+                            disabled={isGenerating}
+                            className="absolute right-2 top-8 text-xs bg-slate-800 hover:bg-slate-700 text-amber-500 px-2 py-1 rounded border border-slate-700 transition-colors disabled:opacity-50"
+                        >
+                            {isGenerating ? '...' : 'Generate'}
+                        </button>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Gender</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            {GENDERS.map((gender) => (
+                                <button
+                                    key={gender}
+                                    onClick={() => setSelectedGender(gender)}
+                                    className={`p-2 rounded border transition-all text-sm ${selectedGender === gender
+                                        ? 'bg-amber-900/30 border-amber-500 text-amber-200'
+                                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                                        }`}
+                                >
+                                    {gender}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div>
@@ -60,8 +108,8 @@ export function CharacterCreation() {
                                     key={cls}
                                     onClick={() => setSelectedClass(cls)}
                                     className={`p-3 rounded border transition-all ${selectedClass === cls
-                                            ? 'bg-amber-900/30 border-amber-500 text-amber-200'
-                                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                                        ? 'bg-amber-900/30 border-amber-500 text-amber-200'
+                                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
                                         }`}
                                 >
                                     {cls}
