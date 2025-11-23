@@ -1,9 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useGameStore } from '@/lib/store';
-import { Message } from '@/types/dnd';
+'use client'
+
+import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useGameStore } from '@/lib/store';
+import { GameState, Message } from '@/types/dnd';
+import { getInitialAdventurePrompt } from '@/lib/gm-prompts';
 
 export function ChatInterface() {
     const { chatHistory, addMessage, character } = useGameStore();
@@ -25,12 +28,7 @@ export function ChatInterface() {
                 setIsLoading(true);
 
                 try {
-                    const initialPrompt = `The player is ${character.name}, a level ${character.level} ${character.class}.
-Please start the adventure by:
-1. Generating a brief, engaging backstory for this character based on their class.
-2. Providing them with appropriate starting equipment for a ${character.class} using the update_inventory tool (e.g., weapons, armor, basic supplies, potions).
-3. Describing the current setting and location in vivid detail.
-4. Welcoming the player and asking "What do you do?".`;
+                    const initialPrompt = getInitialAdventurePrompt(character);
 
                     const response = await fetch('/api/chat', {
                         method: 'POST',
@@ -102,12 +100,7 @@ Please start the adventure by:
             // If history starts with assistant (due to auto-start), prepend the initial prompt
             // to ensure User -> Assistant -> User flow
             if (contextMessages.length > 0 && contextMessages[0].role === 'assistant') {
-                const initialPrompt = `The player is ${character.name}, a level ${character.level} ${character.class}.
-Please start the adventure by:
-1. Generating a brief, engaging backstory for this character based on their class.
-2. Providing them with appropriate starting equipment for a ${character.class} using the update_inventory tool (e.g., weapons, armor, basic supplies, potions).
-3. Describing the current setting and location in vivid detail.
-4. Welcoming the player and asking "What do you do?".`;
+                const initialPrompt = getInitialAdventurePrompt(character);
 
                 contextMessages.unshift({
                     role: 'user',
@@ -168,14 +161,17 @@ Please start the adventure by:
             if (data.toolCalls) {
                 for (const toolCall of data.toolCalls) {
                     if (toolCall.name === 'update_inventory' && toolCall.result.success) {
-                        if (toolCall.result.action === 'added') {
-                            const { addItem } = useGameStore.getState();
-                            addItem(toolCall.result.item);
-                        } else if (toolCall.result.action === 'removed') {
-                            const { character, updateCharacter } = useGameStore.getState();
-                            updateCharacter({
-                                inventory: character.inventory.filter(i => i.name !== toolCall.result.itemName)
-                            });
+                        const { addItem, character, updateCharacter } = useGameStore.getState();
+
+                        // Process each item in the results array
+                        for (const itemResult of toolCall.result.results) {
+                            if (itemResult.action === 'added') {
+                                addItem(itemResult.item);
+                            } else if (itemResult.action === 'removed') {
+                                updateCharacter({
+                                    inventory: character.inventory.filter(i => i.name !== itemResult.itemName)
+                                });
+                            }
                         }
                     } else if (toolCall.name === 'update_character' && toolCall.result.success) {
                         const { updateCharacter } = useGameStore.getState();

@@ -1,117 +1,9 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { Character, Item, Stats } from '@/types/dnd';
+import { GM_TOOLS, getGMSystemPrompt } from '@/lib/gm-prompts';
 
 console.log(process.env);
-
-// Define the tools available to the GM
-const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-    {
-        type: 'function',
-        function: {
-            name: 'get_character_stats',
-            description: 'Get the current character statistics, HP, inventory, and other details',
-            parameters: {
-                type: 'object',
-                properties: {},
-                required: []
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'roll_dice',
-            description: 'Roll dice for skill checks, attacks, damage, or any other random events. Returns the individual rolls and total.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    dice: {
-                        type: 'string',
-                        description: 'Dice notation (e.g., "1d20", "2d6+3", "1d20+5")'
-                    },
-                    reason: {
-                        type: 'string',
-                        description: 'The reason for the roll (e.g., "Perception check", "Goblin attack", "Fire damage")'
-                    }
-                },
-                required: ['dice', 'reason']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'update_inventory',
-            description: 'Add or remove items from the character inventory',
-            parameters: {
-                type: 'object',
-                properties: {
-                    action: {
-                        type: 'string',
-                        enum: ['add', 'remove'],
-                        description: 'Whether to add or remove an item'
-                    },
-                    item: {
-                        type: 'object',
-                        properties: {
-                            name: {
-                                type: 'string',
-                                description: 'Name of the item'
-                            },
-                            description: {
-                                type: 'string',
-                                description: 'Brief description of the item'
-                            },
-                            quantity: {
-                                type: 'number',
-                                description: 'Quantity of the item'
-                            }
-                        },
-                        required: ['name', 'description', 'quantity']
-                    }
-                },
-                required: ['action', 'item']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'update_character',
-            description: 'Update character stats like HP, stats (STR, DEX, etc.), or level',
-            parameters: {
-                type: 'object',
-                properties: {
-                    hp: {
-                        type: 'number',
-                        description: 'New HP value (can be positive for healing or negative for damage)'
-                    },
-                    maxHp: {
-                        type: 'number',
-                        description: 'New maximum HP value'
-                    },
-                    level: {
-                        type: 'number',
-                        description: 'New level'
-                    },
-                    stats: {
-                        type: 'object',
-                        properties: {
-                            STR: { type: 'number' },
-                            DEX: { type: 'number' },
-                            CON: { type: 'number' },
-                            INT: { type: 'number' },
-                            WIS: { type: 'number' },
-                            CHA: { type: 'number' }
-                        },
-                        description: 'Updated stats object'
-                    }
-                }
-            }
-        }
-    }
-];
 
 // Tool execution functions
 function executeTool(toolName: string, args: any, character: Character) {
@@ -132,7 +24,7 @@ function executeTool(toolName: string, args: any, character: Character) {
             return rollDice(args.dice, args.reason);
 
         case 'update_inventory':
-            return updateInventory(args.action, args.item, character);
+            return updateInventory(args.action, args.items, character);
 
         case 'update_character':
             return updateCharacter(args, character);
@@ -171,29 +63,40 @@ function rollDice(diceNotation: string, reason: string) {
     };
 }
 
-function updateInventory(action: 'add' | 'remove', item: { name: string; description: string; quantity: number }, character: Character) {
-    if (action === 'add') {
-        const newItem: Item = {
-            id: Date.now().toString(),
-            name: item.name,
-            description: item.description,
-            quantity: item.quantity
-        };
-        return {
-            success: true,
-            action: 'added',
-            item: newItem,
-            message: `Added ${item.quantity}x ${item.name} to inventory`
-        };
-    } else {
-        // For removal, we'll mark it for removal and let the frontend handle it
-        return {
-            success: true,
-            action: 'removed',
-            itemName: item.name,
-            message: `Removed ${item.name} from inventory`
-        };
+function updateInventory(action: 'add' | 'remove', items: { name: string; description: string; quantity: number }[], character: Character) {
+    const results: any[] = [];
+    const itemsSummary: string[] = [];
+
+    for (const item of items) {
+        if (action === 'add') {
+            const newItem: Item = {
+                id: `${Date.now()}-${Math.random()}`,
+                name: item.name,
+                description: item.description,
+                quantity: item.quantity
+            };
+            results.push({
+                success: true,
+                action: 'added',
+                item: newItem
+            });
+            itemsSummary.push(`${item.quantity}x ${item.name}`);
+        } else {
+            results.push({
+                success: true,
+                action: 'removed',
+                itemName: item.name
+            });
+            itemsSummary.push(item.name);
+        }
     }
+
+    return {
+        success: true,
+        action,
+        results,
+        message: `${action === 'add' ? 'Added' : 'Removed'} ${itemsSummary.join(', ')} ${action === 'add' ? 'to' : 'from'} inventory`
+    };
 }
 
 function updateCharacter(updates: any, character: Character) {
@@ -264,30 +167,7 @@ export async function POST(req: Request) {
 
         const openai = new OpenAI({ apiKey, baseURL });
 
-        const systemPrompt = `You are an expert Dungeon Master for a D&D 5e game. 
-Your goal is to provide an immersive, text-based roleplaying experience.
-
-Rules:
-1. Follow D&D 5e rules for checks and combat where possible in a narrative format.
-2. Use the roll_dice tool when skill checks, attack rolls, or damage rolls are needed.
-3. Use the update_character tool to modify HP when the player takes damage or heals.
-4. Use the update_inventory tool to add items when the player finds loot or purchases items, and to remove items when they are used or sold.
-5. Keep descriptions vivid but concise.
-6. Manage the story, NPCs, and world state.
-7. Do not break character unless explaining a rule.
-8. YOU are responsible for rolling dice for NPCs and events using the roll_dice tool.
-
-Available Tools:
-- get_character_stats: Get current character information
-- roll_dice: Roll dice for any checks, attacks, or damage
-- update_inventory: Add or remove items from the character's inventory
-- update_character: Modify HP, stats, or level
-
-Current Character:
-Name: ${character.name}
-Class: ${character.class}
-Level: ${character.level}
-HP: ${character.hp}/${character.maxHp}`;
+        const systemPrompt = getGMSystemPrompt(character);
 
         // Prepare messages for the LLM
         let llmMessages = [...messages];
@@ -310,7 +190,7 @@ HP: ${character.hp}/${character.maxHp}`;
         let completion = await openai.chat.completions.create({
             model,
             messages: llmMessages,
-            tools,
+            tools: GM_TOOLS,
             tool_choice: 'auto',
             temperature: 0.7,
         });
