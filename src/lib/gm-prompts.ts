@@ -150,11 +150,22 @@ HP: ${character.hp}/${character.maxHp}`;
 /**
  * Generate the initial adventure prompt when starting a new game
  */
-export function getInitialAdventurePrompt(character: Character): string {
+export function getInitialAdventurePrompt(character: Character, setting?: string): string {
+    const backstory = character.backstory || `A brave adventurer ready to face the unknown.`;
+    const worldSetting = setting || `You find yourself in a typical fantasy realm, ready for adventure.`;
+
     return `The player is ${character.name}, a level ${character.level} ${character.race} ${character.class}.
-Please start the adventure by:
-1. Generating a brief, engaging backstory for this character based on their class.
-2. Providing them with appropriate starting equipment for a ${character.class}. You MUST use the update_inventory tool to add these items (e.g., weapons, armor, potions) to their inventory. Do not just list them in text.
-3. Describing the current setting and location in vivid detail.
-4. Welcoming the player and asking "What do you do?".`;
+
+Their backstory: ${backstory}
+
+The world and current situation: ${worldSetting}
+
+The player's starting inventory has already been set up. Please begin the adventure by:
+1. Narrating their backstory as an introduction (in third person or dramatic style)
+2. Describing the setting and their current situation (based on the world description above)
+3. Welcoming the player into the story with "You find yourself..." or similar
+4. Ending with "What do you do?"
+
+Make it immersive and engaging, building on the backstory and setting provided above.`;
 }
+

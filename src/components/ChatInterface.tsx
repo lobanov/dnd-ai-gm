@@ -12,7 +12,7 @@ import { HttpLLMClient } from '@/lib/llm/client';
 import { Message as LLMMessage } from '@/lib/llm/types';
 
 export function ChatInterface() {
-    const { chatHistory, addMessage, updateMessage, character } = useGameStore();
+    const { chatHistory, addMessage, updateMessage, character, setting } = useGameStore();
     const [input, setInput] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
     const hasInitialized = useRef(false);
@@ -100,7 +100,7 @@ export function ChatInterface() {
         const initGame = async () => {
             if (chatHistory.length === 0 && !hasInitialized.current) {
                 hasInitialized.current = true;
-                const initialPrompt = getInitialAdventurePrompt(character);
+                const initialPrompt = getInitialAdventurePrompt(character, setting);
                 // We send this as a user message to kickstart the LLM, but we might not want to show it as a user bubble?
                 // The original code sent it as a user message but didn't add it to the store, 
                 // effectively treating it as a system/hidden prompt.
@@ -118,7 +118,7 @@ export function ChatInterface() {
         };
 
         initGame();
-    }, [chatHistory.length, character, sendMessage]);
+    }, [chatHistory.length, character, setting, sendMessage]);
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;

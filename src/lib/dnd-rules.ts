@@ -55,4 +55,5 @@ export const INITIAL_CHARACTER = {
     stats: INITIAL_STATS,
     inventory: [],
     skills: [],
+    backstory: '',
 };

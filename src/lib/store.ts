@@ -13,6 +13,7 @@ export interface GameStore extends GameState {
     clearChat: () => void;
     addItem: (item: Item) => void;
     removeItem: (itemId: string) => void;
+    setSetting: (setting: string) => void;
     resetGame: () => void;
 }
 
@@ -23,6 +24,7 @@ export const useGameStore = create<GameStore>()(
             chatHistory: [],
             isConfigured: false,
             isGameStarted: false,
+            setting: undefined,
 
             startGame: () => set({ isGameStarted: true }),
 
@@ -63,6 +65,8 @@ export const useGameStore = create<GameStore>()(
                     },
                 })),
 
+            setSetting: (setting) => set({ setting }),
+
             resetGame: () =>
                 set((state) => ({
                     character: {
@@ -74,6 +78,7 @@ export const useGameStore = create<GameStore>()(
                     },
                     chatHistory: [],
                     isGameStarted: false,
+                    setting: undefined,
                 })),
         }),
         {

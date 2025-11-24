@@ -27,6 +27,7 @@ export interface Character {
   stats: Stats;
   inventory: Item[];
   skills: string[];
+  backstory?: string;
 }
 
 export type MessageRole = 'user' | 'assistant' | 'system';
@@ -56,4 +57,5 @@ export interface GameState {
   character: Character;
   chatHistory: Message[];
   isConfigured: boolean;
+  setting?: string;
 }
