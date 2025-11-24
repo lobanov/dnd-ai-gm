@@ -47,6 +47,7 @@ export interface Message {
       arguments: any;
       result: any;
     }>;
+    _toolCallIds?: string[];
   };
 }
 

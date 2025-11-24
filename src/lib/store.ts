@@ -3,12 +3,13 @@ import { persist } from 'zustand/middleware';
 import { Character, GameState, Message, Item } from '@/types/dnd';
 import { INITIAL_CHARACTER } from '@/lib/dnd-rules';
 
-interface GameStore extends GameState {
+export interface GameStore extends GameState {
     isGameStarted: boolean;
     startGame: () => void;
     setCharacter: (character: Character) => void;
     updateCharacter: (updates: Partial<Character>) => void;
     addMessage: (message: Message) => void;
+    updateMessage: (id: string, updates: Partial<Message>) => void;
     clearChat: () => void;
     addItem: (item: Item) => void;
     removeItem: (itemId: string) => void;
@@ -35,6 +36,13 @@ export const useGameStore = create<GameStore>()(
             addMessage: (message) =>
                 set((state) => ({
                     chatHistory: [...state.chatHistory, message],
+                })),
+
+            updateMessage: (id, updates) =>
+                set((state) => ({
+                    chatHistory: state.chatHistory.map((msg) =>
+                        msg.id === id ? { ...msg, ...updates } : msg
+                    ),
                 })),
 
             clearChat: () => set({ chatHistory: [] }),

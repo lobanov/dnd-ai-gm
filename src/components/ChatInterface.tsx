@@ -1,19 +1,94 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useGameStore } from '@/lib/store';
-import { GameState, Message } from '@/types/dnd';
+import { Message as DndMessage } from '@/types/dnd';
 import { getInitialAdventurePrompt } from '@/lib/gm-prompts';
+import { useLLM } from '@/lib/llm/use-llm';
+import { HttpLLMClient } from '@/lib/llm/client';
+import { Message as LLMMessage } from '@/lib/llm/types';
 
 export function ChatInterface() {
-    const { chatHistory, addMessage, character } = useGameStore();
+    const { chatHistory, addMessage, updateMessage, character } = useGameStore();
     const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const hasInitialized = useRef(false);
+
+    // Initialize LLM client
+    const client = useMemo(() => new HttpLLMClient(), []);
+
+    // Callback to sync LLM messages to GameStore
+    const handleMessageReceived = (message: LLMMessage) => {
+        if (message.role === 'assistant') {
+            const aiMsg: DndMessage = {
+                id: (Date.now() + Math.random()).toString(),
+                role: 'assistant',
+                content: message.content || '',
+                timestamp: Date.now(),
+                meta: message.toolCalls ? {
+                    type: 'tool',
+                    toolCalls: message.toolCalls.map(tc => ({
+                        name: tc.tool.name,
+                        arguments: tc.tool.args,
+                        // We'll populate the result later when the tool message arrives
+                        result: null as any
+                    })),
+                    // Store the tool call IDs to map results back
+                    _toolCallIds: message.toolCalls.map(tc => tc.id)
+                } : { type: 'narration' }
+            };
+            addMessage(aiMsg);
+        } else if (message.role === 'tool') {
+            // Find the assistant message that made this call and update it with the result
+            // We search backwards from the end of chatHistory
+            // Note: chatHistory in this scope might be stale if we don't use the functional update or ref, 
+            // but useGameStore actions use the latest state internally. 
+            // However, here we need to find the ID to pass to updateMessage.
+            // We can assume the last assistant message with pending tools is the one.
+
+            const store = useGameStore.getState();
+            const lastAssistantMsg = [...store.chatHistory].reverse().find(m =>
+                m.role === 'assistant' &&
+                m.meta?.type === 'tool' &&
+                m.meta._toolCallIds?.includes(message.toolCallId)
+            );
+
+            if (lastAssistantMsg && lastAssistantMsg.meta?.toolCalls && lastAssistantMsg.meta._toolCallIds) {
+                const toolCallIndex = lastAssistantMsg.meta._toolCallIds.indexOf(message.toolCallId);
+                if (toolCallIndex !== -1) {
+                    const updatedToolCalls = [...lastAssistantMsg.meta.toolCalls];
+                    updatedToolCalls[toolCallIndex] = {
+                        ...updatedToolCalls[toolCallIndex],
+                        result: message.content
+                    };
+
+                    updateMessage(lastAssistantMsg.id, {
+                        meta: {
+                            ...lastAssistantMsg.meta,
+                            toolCalls: updatedToolCalls
+                        }
+                    });
+                }
+            }
+        }
+    };
+
+    const { sendMessage, isLoading } = useLLM({
+        client,
+        onMessageReceived: handleMessageReceived,
+        onError: (error) => {
+            const errorMsg: DndMessage = {
+                id: Date.now().toString(),
+                role: 'system',
+                content: `Error: ${error.message}`,
+                timestamp: Date.now(),
+            };
+            addMessage(errorMsg);
+        }
+    });
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -25,58 +100,30 @@ export function ChatInterface() {
         const initGame = async () => {
             if (chatHistory.length === 0 && !hasInitialized.current) {
                 hasInitialized.current = true;
-                setIsLoading(true);
+                const initialPrompt = getInitialAdventurePrompt(character);
+                // We send this as a user message to kickstart the LLM, but we might not want to show it as a user bubble?
+                // The original code sent it as a user message but didn't add it to the store, 
+                // effectively treating it as a system/hidden prompt.
+                // useLLM adds the message to its history.
+                // We can just call sendMessage. If we don't want it in the UI, we just don't add it to GameStore.
+                // However, useLLM doesn't expose a way to send "hidden" messages easily without modifying history directly.
+                // But wait, useLLM.sendMessage adds to its internal state.
+                // If we want the *response* to show up, we need to call sendMessage.
+                // If we don't want the *prompt* to show up in UI, we just don't call addMessage(userMsg) for it.
+                // Since handleMessageReceived only handles assistant/tool messages, the user message won't be added automatically.
+                // So we just call sendMessage(initialPrompt).
 
-                try {
-                    const initialPrompt = getInitialAdventurePrompt(character);
-
-                    const response = await fetch('/api/chat', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            messages: [{
-                                role: 'user',
-                                content: initialPrompt
-                            }],
-                            character: character  // Send character state
-                        }),
-                    });
-
-                    if (!response.ok) throw new Error('Failed to get response');
-
-                    const data = await response.json();
-
-                    const aiMsg: Message = {
-                        id: (Date.now() + 1).toString(),
-                        role: 'assistant',
-                        content: data.content,
-                        timestamp: Date.now(),
-                        meta: { type: 'narration' }
-                    };
-
-                    addMessage(aiMsg);
-                } catch (error) {
-                    console.error(error);
-                    const errorMsg: Message = {
-                        id: (Date.now() + 1).toString(),
-                        role: 'system',
-                        content: 'Error: Could not connect to the Game Master. Please check your configuration.',
-                        timestamp: Date.now(),
-                    };
-                    addMessage(errorMsg);
-                } finally {
-                    setIsLoading(false);
-                }
+                await sendMessage(initialPrompt);
             }
         };
 
         initGame();
-    }, [chatHistory.length, character, addMessage]);
+    }, [chatHistory.length, character, sendMessage]);
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
 
-        const userMsg: Message = {
+        const userMsg: DndMessage = {
             id: Date.now().toString(),
             role: 'user',
             content: input,
@@ -85,112 +132,8 @@ export function ChatInterface() {
 
         addMessage(userMsg);
         setInput('');
-        setIsLoading(true);
 
-        try {
-            // Prepare context for AI
-            // Filter out system messages (like errors) to avoid breaking role alternation
-            let contextMessages = chatHistory
-                .filter(m => m.role !== 'system')
-                .map(m => ({
-                    role: m.role,
-                    content: m.content
-                }));
-
-            // If history starts with assistant (due to auto-start), prepend the initial prompt
-            // to ensure User -> Assistant -> User flow
-            if (contextMessages.length > 0 && contextMessages[0].role === 'assistant') {
-                const initialPrompt = getInitialAdventurePrompt(character);
-
-                contextMessages.unshift({
-                    role: 'user',
-                    content: initialPrompt
-                });
-            }
-
-            // Add the new user message
-            contextMessages.push({
-                role: userMsg.role,
-                content: userMsg.content
-            });
-
-            // Sanitize messages to ensure strict User -> Assistant -> User alternation
-            // This handles cases where we might have consecutive user messages (e.g. after an error)
-            const sanitizedMessages: { role: string; content: string }[] = [];
-            for (const msg of contextMessages) {
-                if (sanitizedMessages.length === 0) {
-                    sanitizedMessages.push({ ...msg });
-                } else {
-                    const lastMsg = sanitizedMessages[sanitizedMessages.length - 1];
-                    if (lastMsg.role === msg.role) {
-                        // Merge consecutive messages with same role
-                        lastMsg.content += `\n\n${msg.content}`;
-                    } else {
-                        sanitizedMessages.push({ ...msg });
-                    }
-                }
-            }
-
-            const response = await fetch('/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    messages: sanitizedMessages,
-                    character: character  // Send character state with every request
-                }),
-            });
-
-            if (!response.ok) throw new Error('Failed to get response');
-
-            const data = await response.json();
-
-            const aiMsg: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: data.content,
-                timestamp: Date.now(),
-                meta: data.toolCalls ? {
-                    type: 'tool',
-                    toolCalls: data.toolCalls
-                } : { type: 'narration' }
-            };
-
-            addMessage(aiMsg);
-
-            // Apply tool call effects to the character state
-            if (data.toolCalls) {
-                for (const toolCall of data.toolCalls) {
-                    if (toolCall.name === 'update_inventory' && toolCall.result.success) {
-                        const { addItem, character, updateCharacter } = useGameStore.getState();
-
-                        // Process each item in the results array
-                        for (const itemResult of toolCall.result.results) {
-                            if (itemResult.action === 'added') {
-                                addItem(itemResult.item);
-                            } else if (itemResult.action === 'removed') {
-                                updateCharacter({
-                                    inventory: character.inventory.filter(i => i.name !== itemResult.itemName)
-                                });
-                            }
-                        }
-                    } else if (toolCall.name === 'update_character' && toolCall.result.success) {
-                        const { updateCharacter } = useGameStore.getState();
-                        updateCharacter(toolCall.result.updates);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error(error);
-            const errorMsg: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'system',
-                content: 'Error: Could not connect to the Game Master. Please check your configuration.',
-                timestamp: Date.now(),
-            };
-            addMessage(errorMsg);
-        } finally {
-            setIsLoading(false);
-        }
+        await sendMessage(input);
     };
 
     return (
@@ -217,28 +160,39 @@ export function ChatInterface() {
                             {/* Display tool calls if present */}
                             {msg.meta?.toolCalls && msg.meta.toolCalls.length > 0 && (
                                 <div className="mb-3 space-y-2">
-                                    {msg.meta.toolCalls.map((toolCall, idx) => (
+                                    {msg.meta.toolCalls.map((toolCall: any, idx: number) => (
                                         <div key={idx} className="bg-slate-950/50 border border-amber-900/30 rounded px-3 py-2 text-sm">
                                             <div className="flex items-center gap-2 text-amber-400 font-mono">
                                                 <span className="text-amber-500">🛠️</span>
                                                 <span className="font-bold">{toolCall.name}</span>
                                             </div>
-                                            {toolCall.name === 'roll_dice' && toolCall.result.description && (
-                                                <div className="mt-1 text-amber-300 flex items-center gap-2">
-                                                    <span className="text-xl">🎲</span>
-                                                    <span>{toolCall.result.description}</span>
-                                                </div>
+                                            {/* Only show result if it exists */}
+                                            {toolCall.result && (
+                                                <>
+                                                    {toolCall.name === 'roll_dice' && toolCall.result.description && (
+                                                        <div className="mt-1 text-amber-300 flex items-center gap-2">
+                                                            <span className="text-xl">🎲</span>
+                                                            <span>{toolCall.result.description}</span>
+                                                        </div>
+                                                    )}
+                                                    {(toolCall.name === 'update_inventory' || toolCall.name === 'add_inventory') && toolCall.result.message && (
+                                                        <div className="mt-1 text-blue-300 flex items-center gap-2">
+                                                            <span>📦</span>
+                                                            <span>{toolCall.result.message}</span>
+                                                        </div>
+                                                    )}
+                                                    {toolCall.name === 'update_character' && toolCall.result.message && (
+                                                        <div className="mt-1 text-green-300 flex items-center gap-2">
+                                                            <span>✨</span>
+                                                            <span>{toolCall.result.message}</span>
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
-                                            {toolCall.name === 'update_inventory' && toolCall.result.message && (
-                                                <div className="mt-1 text-blue-300 flex items-center gap-2">
-                                                    <span>{toolCall.result.action === 'added' ? '📦' : '❌'}</span>
-                                                    <span>{toolCall.result.message}</span>
-                                                </div>
-                                            )}
-                                            {toolCall.name === 'update_character' && toolCall.result.message && (
-                                                <div className="mt-1 text-green-300 flex items-center gap-2">
-                                                    <span>✨</span>
-                                                    <span>{toolCall.result.message}</span>
+                                            {!toolCall.result && (
+                                                <div className="mt-1 text-slate-500 italic flex items-center gap-2">
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                    <span>Executing...</span>
                                                 </div>
                                             )}
                                         </div>
@@ -270,7 +224,7 @@ export function ChatInterface() {
                                         td: ({ node, ...props }: any) => <td className="px-4 py-2" {...props} />,
                                     }}
                                 >
-                                    {msg.content}
+                                    {msg.content || ''}
                                 </ReactMarkdown>
                             )}
                         </div>
