@@ -141,6 +141,7 @@ Available Tools:
 
 Current Character:
 Name: ${character.name}
+Race: ${character.race}
 Class: ${character.class}
 Level: ${character.level}
 HP: ${character.hp}/${character.maxHp}`;
@@ -150,7 +151,7 @@ HP: ${character.hp}/${character.maxHp}`;
  * Generate the initial adventure prompt when starting a new game
  */
 export function getInitialAdventurePrompt(character: Character): string {
-    return `The player is ${character.name}, a level ${character.level} ${character.class}.
+    return `The player is ${character.name}, a level ${character.level} ${character.race} ${character.class}.
 Please start the adventure by:
 1. Generating a brief, engaging backstory for this character based on their class.
 2. Providing them with appropriate starting equipment for a ${character.class}. You MUST use the update_inventory tool to add these items (e.g., weapons, armor, potions) to their inventory. Do not just list them in text.

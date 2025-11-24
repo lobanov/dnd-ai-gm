@@ -64,11 +64,17 @@ export const useGameStore = create<GameStore>()(
                 })),
 
             resetGame: () =>
-                set({
-                    character: INITIAL_CHARACTER,
+                set((state) => ({
+                    character: {
+                        ...INITIAL_CHARACTER,
+                        name: state.character.name,
+                        class: state.character.class,
+                        race: state.character.race,
+                        gender: state.character.gender,
+                    },
                     chatHistory: [],
                     isGameStarted: false,
-                }),
+                })),
         }),
         {
             name: 'dnd-ai-game-storage',

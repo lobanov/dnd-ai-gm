@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { characterClass, gender } = body;
+        const { characterClass, gender, race } = body;
 
         if (!characterClass) {
             return NextResponse.json(
@@ -20,7 +20,8 @@ export async function POST(req: Request) {
         const openai = new OpenAI({ apiKey, baseURL });
 
         const genderText = gender ? ` The character is ${gender.toLowerCase()}.` : '';
-        const prompt = `Generate a single, creative, and fitting fantasy name for a Dungeons & Dragons character of the class: ${characterClass}.${genderText} 
+        const raceText = race ? ` The character is a ${race}.` : '';
+        const prompt = `Generate a single, creative, and fitting fantasy name for a Dungeons & Dragons character of the class: ${characterClass}.${raceText}${genderText} 
         Do not include any titles, descriptions, or punctuation, just the name.`;
 
         const completion = await openai.chat.completions.create({

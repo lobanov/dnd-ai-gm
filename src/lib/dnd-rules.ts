@@ -32,9 +32,22 @@ export const CLASS_PRESETS: Record<string, Stats> = {
     Cleric: { STR: 12, DEX: 10, CON: 14, INT: 10, WIS: 16, CHA: 12 },
 };
 
+export const RACES = [
+    'Human',
+    'Elf',
+    'Dwarf',
+    'Halfling',
+    'Dragonborn',
+    'Gnome',
+    'Half-Elf',
+    'Half-Orc',
+    'Tiefling',
+];
+
 export const INITIAL_CHARACTER = {
     name: 'Adventurer',
     class: 'Fighter',
+    race: 'Human',
     gender: 'Male',
     level: 1,
     hp: 10,

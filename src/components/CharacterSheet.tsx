@@ -10,7 +10,7 @@ export function CharacterSheet() {
         <div className="bg-slate-900 text-slate-100 p-4 rounded-lg border border-slate-700 w-full max-w-md space-y-6 font-serif">
             <div className="border-b border-slate-700 pb-4">
                 <h2 className="text-2xl font-bold text-amber-500">{character.name}</h2>
-                <p className="text-slate-400">Level {character.level} {character.class}</p>
+                <p className="text-slate-400">Level {character.level} {character.race} {character.class}</p>
                 <div className="mt-2 flex items-center gap-4">
                     <div className="bg-red-900/30 px-3 py-1 rounded border border-red-900/50">
                         <span className="text-xs text-red-400 uppercase tracking-wider">HP</span>

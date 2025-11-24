@@ -19,6 +19,7 @@ export interface Item {
 export interface Character {
   name: string;
   class: string;
+  race: string;
   gender: string;
   level: number;
   hp: number;
