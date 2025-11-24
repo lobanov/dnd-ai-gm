@@ -2,6 +2,7 @@ import React from 'react';
 import { useGameStore } from '@/lib/store';
 import { getStatModifier } from '@/lib/dnd-rules';
 import { StatName } from '@/types/dnd';
+import { Tooltip } from './Tooltip';
 
 export function CharacterSheet() {
     const { character } = useGameStore();
@@ -9,7 +10,9 @@ export function CharacterSheet() {
     return (
         <div className="bg-slate-900 text-slate-100 p-4 rounded-lg border border-slate-700 w-full max-w-md space-y-6 font-serif">
             <div className="border-b border-slate-700 pb-4">
-                <h2 className="text-2xl font-bold text-amber-500">{character.name}</h2>
+                <Tooltip content={character.backstory || ''} position="right">
+                    <h2 className="text-2xl font-bold text-amber-500 cursor-help">{character.name}</h2>
+                </Tooltip>
                 <p className="text-slate-400">Level {character.level} {character.race} {character.class}</p>
                 <div className="mt-2 flex items-center gap-4">
                     <div className="bg-red-900/30 px-3 py-1 rounded border border-red-900/50">
@@ -42,9 +45,13 @@ export function CharacterSheet() {
                 ) : (
                     <ul className="space-y-1">
                         {character.inventory.map((item) => (
-                            <li key={item.id} className="text-sm flex justify-between items-center bg-slate-800/50 px-2 py-1 rounded">
-                                <span>{item.name}</span>
-                                <span className="text-slate-500">x{item.quantity}</span>
+                            <li key={item.id} className="text-sm">
+                                <Tooltip content={item.description} position="right">
+                                    <div className="flex justify-between items-center bg-slate-800/50 px-2 py-1 rounded cursor-help hover:bg-slate-800 transition-colors">
+                                        <span>{item.name}</span>
+                                        <span className="text-slate-500">x{item.quantity}</span>
+                                    </div>
+                                </Tooltip>
                             </li>
                         ))}
                     </ul>
