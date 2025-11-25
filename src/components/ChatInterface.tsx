@@ -10,6 +10,7 @@ import { getInitialAdventurePrompt } from '@/lib/gm-prompts';
 import { useLLM } from '@/lib/llm/use-llm';
 import { HttpLLMClient } from '@/lib/llm/client';
 import { Message as LLMMessage } from '@/lib/llm/types';
+import { convertLlmMessageToDndMessage, updateMessageWithToolResult } from '@/lib/chat-logic';
 
 export function ChatInterface() {
     const { chatHistory, addMessage, updateMessage, character, setting } = useGameStore();
@@ -23,55 +24,16 @@ export function ChatInterface() {
     // Callback to sync LLM messages to GameStore
     const handleMessageReceived = (message: LLMMessage) => {
         if (message.role === 'assistant') {
-            const aiMsg: DndMessage = {
-                id: (Date.now() + Math.random()).toString(),
-                role: 'assistant',
-                content: message.content || '',
-                timestamp: Date.now(),
-                meta: message.toolCalls ? {
-                    type: 'tool',
-                    toolCalls: message.toolCalls.map(tc => ({
-                        name: tc.tool.name,
-                        arguments: tc.tool.args,
-                        // We'll populate the result later when the tool message arrives
-                        result: null as any
-                    })),
-                    // Store the tool call IDs to map results back
-                    _toolCallIds: message.toolCalls.map(tc => tc.id)
-                } : { type: 'narration' }
-            };
+            const aiMsg = convertLlmMessageToDndMessage(message);
             addMessage(aiMsg);
         } else if (message.role === 'tool') {
-            // Find the assistant message that made this call and update it with the result
-            // We search backwards from the end of chatHistory
-            // Note: chatHistory in this scope might be stale if we don't use the functional update or ref, 
-            // but useGameStore actions use the latest state internally. 
-            // However, here we need to find the ID to pass to updateMessage.
-            // We can assume the last assistant message with pending tools is the one.
-
             const store = useGameStore.getState();
-            const lastAssistantMsg = [...store.chatHistory].reverse().find(m =>
-                m.role === 'assistant' &&
-                m.meta?.type === 'tool' &&
-                m.meta._toolCallIds?.includes(message.toolCallId)
-            );
+            const updateResult = updateMessageWithToolResult(store.chatHistory, message.toolCallId, message.content);
 
-            if (lastAssistantMsg && lastAssistantMsg.meta?.toolCalls && lastAssistantMsg.meta._toolCallIds) {
-                const toolCallIndex = lastAssistantMsg.meta._toolCallIds.indexOf(message.toolCallId);
-                if (toolCallIndex !== -1) {
-                    const updatedToolCalls = [...lastAssistantMsg.meta.toolCalls];
-                    updatedToolCalls[toolCallIndex] = {
-                        ...updatedToolCalls[toolCallIndex],
-                        result: message.content
-                    };
-
-                    updateMessage(lastAssistantMsg.id, {
-                        meta: {
-                            ...lastAssistantMsg.meta,
-                            toolCalls: updatedToolCalls
-                        }
-                    });
-                }
+            if (updateResult) {
+                updateMessage(updateResult.message.id, {
+                    meta: updateResult.message.meta
+                });
             }
         }
     };

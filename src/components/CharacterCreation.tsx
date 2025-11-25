@@ -8,16 +8,7 @@ const GENDERS = ['Male', 'Female'];
 
 type Step = 1 | 2 | 3;
 
-interface GeneratedDetails {
-    name: string;
-    stats: Stats;
-    backstory: string;
-}
-
-interface GeneratedWorld {
-    inventory: Array<{ name: string; description: string; quantity: number }>;
-    setting: string;
-}
+import { CharacterSelection, GeneratedDetails, GeneratedWorld, createCharacter } from '@/lib/character-creation';
 
 export function CharacterCreation() {
     const { setCharacter, setSetting, startGame } = useGameStore();
@@ -116,31 +107,15 @@ export function CharacterCreation() {
     const handleStartAdventure = () => {
         if (!generatedDetails || !generatedWorld) return;
 
-        const stats = generatedDetails.stats;
-        const conMod = Math.floor((stats.CON - 10) / 2);
-        const hp = 10 + conMod;
-
-        // Convert generated inventory to Item format with IDs
-        const inventory: Item[] = generatedWorld.inventory.map((item, index) => ({
-            id: `${Date.now()}-${index}`,
-            name: item.name,
-            description: item.description,
-            quantity: item.quantity,
-        }));
-
-        const newCharacter: Character = {
-            name: generatedDetails.name,
-            class: selectedClass,
-            race: selectedRace,
-            gender: selectedGender,
-            level: 1,
-            hp: hp,
-            maxHp: hp,
-            stats: stats,
-            inventory: inventory,
-            skills: [],
-            backstory: generatedDetails.backstory,
-        };
+        const newCharacter = createCharacter(
+            {
+                class: selectedClass,
+                race: selectedRace,
+                gender: selectedGender,
+            },
+            generatedDetails,
+            generatedWorld
+        );
 
         setCharacter(newCharacter);
         setSetting(generatedWorld.setting);

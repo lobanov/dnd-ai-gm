@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest",
-    "test:eval": "jest",
+    "test": "jest --testPathIgnorePatterns='eval.test.ts'",
+    "test:eval": "jest src/__tests__/gm-tools.eval.test.ts",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },
