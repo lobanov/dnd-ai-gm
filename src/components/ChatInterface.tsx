@@ -93,37 +93,15 @@ export function ChatInterface() {
     const handleActionSelect = async (actionId: string, diceTotal?: number) => {
         if (isLoading) return;
 
-        // Construct payload with character context
-        const characterState = {
-            name: character.name,
-            class: character.class,
-            level: character.level,
-            hp: character.hp,
-            maxHp: character.maxHp,
-            stats: character.stats,
-            inventory: character.inventory
-        };
-
-        const actionPayload = {
-            actionId,
-            diceTotal
-        };
-
-        const content = `[CHARACTER STATE]
-${JSON.stringify(characterState)}
-
-[ACTION]
-${JSON.stringify(actionPayload)}`;
-
-        // Add user message to chat (simplified for display)
-        const displayContent = diceTotal
+        // Construct simple action message
+        const content = diceTotal
             ? `I choose action: ${actionId} (Rolled: ${diceTotal})`
             : `I choose action: ${actionId}`;
 
         const userMsg: DndMessage = {
             id: Date.now().toString(),
             role: 'user',
-            content: displayContent,
+            content: content,
             timestamp: Date.now(),
         };
 

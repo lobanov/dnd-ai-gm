@@ -52,13 +52,30 @@ export function getInitialAdventurePrompt(character: Character, setting?: string
   const backstory = character.backstory || `A brave adventurer ready to face the unknown.`;
   const worldSetting = setting || `You find yourself in a typical fantasy realm, ready for adventure.`;
 
+  // Format inventory for better readability
+  const inventoryList = character.inventory && character.inventory.length > 0
+    ? character.inventory.map(item => `${item.name} (x${item.quantity})${item.description ? `: ${item.description}` : ''}`).join('\n  - ')
+    : 'Empty';
+
   return `The player is ${character.name}, a level ${character.level} ${character.race} ${character.class}.
+
+CHARACTER STATS:
+- HP: ${character.hp}/${character.maxHp}
+- Strength: ${character.stats.STR}
+- Dexterity: ${character.stats.DEX}
+- Constitution: ${character.stats.CON}
+- Intelligence: ${character.stats.INT}
+- Wisdom: ${character.stats.WIS}
+- Charisma: ${character.stats.CHA}
+
+INVENTORY:
+  - ${inventoryList}
 
 Their backstory: ${backstory}
 
 The world and current situation: ${worldSetting}
 
-The player's starting inventory has already been set up. Please begin the adventure by:
+Please begin the adventure by:
 1. Narrating their backstory as an introduction (in third person or dramatic style)
 2. Describing the setting and their current situation (based on the world description above)
 3. Welcoming the player into the story with "You find yourself..." or similar
