@@ -3,139 +3,97 @@ import OpenAI from 'openai';
 import {
     Message,
     AssistantMessage,
-    GameTool,
     LLMResponse,
-    RollDiceTool,
-    AddInventoryTool,
-    UpdateInventoryTool,
-    UpdateCharacterTool,
-    GetCharacterStatsTool
+    GameAction,
+    CharacterUpdates,
+    InventoryUpdates
 } from '@/lib/llm/types';
+import { Character } from '@/types/dnd';
+import { getGMSystemPrompt } from '@/lib/gm-prompts';
 
-// Tool definitions for OpenAI
-const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-    {
-        type: 'function',
-        function: {
-            name: 'get_character_stats',
-            description: 'Get the current character statistics, HP, inventory, and other details',
-            parameters: {
-                type: 'object',
-                properties: {},
-                required: []
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'roll_dice',
-            description: 'Roll dice for skill checks, attacks, damage, or any other random events. Returns the individual rolls and total.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    dice: {
-                        type: 'string',
-                        description: 'Dice notation (e.g., "1d20", "2d6+3", "1d20+5")'
-                    },
-                    reason: {
-                        type: 'string',
-                        description: 'The reason for the roll (e.g., "Perception check", "Goblin attack", "Fire damage")'
-                    }
+// JSON Schema for GM Response
+// JSON Schema for GM Response
+const GM_RESPONSE_SCHEMA = {
+    type: 'json_schema',
+    json_schema: {
+        name: 'gm_response',
+        schema: {
+            type: 'object',
+            properties: {
+                narrative: {
+                    type: 'string',
+                    description: 'The narrative description of what happens next.'
                 },
-                required: ['dice', 'reason']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'add_inventory',
-            description: 'Add items to the character inventory.',
-            parameters: {
-                type: 'object',
-                properties: {
+                actions: {
+                    type: 'array',
+                    description: '2-5 actions the player can take next.',
                     items: {
-                        type: 'array',
-                        description: 'Array of items to add',
-                        items: {
-                            type: 'object',
-                            properties: {
-                                slug: { type: 'string', description: 'Unique identifier/slug for the item' },
-                                name: { type: 'string', description: 'Name of the item' },
-                                description: { type: 'string', description: 'Brief description of the item' },
-                                quantity: { type: 'number', description: 'Quantity of the item' }
-                            },
-                            required: ['slug', 'name', 'description', 'quantity']
-                        }
-                    }
-                },
-                required: ['items']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'update_inventory',
-            description: 'Update quantity of existing items in inventory.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    updates: {
-                        type: 'array',
-                        description: 'Array of updates to perform',
-                        items: {
-                            type: 'object',
-                            properties: {
-                                slug: { type: 'string', description: 'Slug of the item to update' },
-                                quantityChange: { type: 'number', description: 'Change in quantity (positive to add, negative to remove)' }
-                            },
-                            required: ['slug', 'quantityChange']
-                        }
-                    }
-                },
-                required: ['updates']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'update_character',
-            description: 'Update character stats like HP, stats (STR, DEX, etc.), or level',
-            parameters: {
-                type: 'object',
-                properties: {
-                    hp: { type: 'number', description: 'New HP value' },
-                    maxHp: { type: 'number', description: 'New maximum HP value' },
-                    level: { type: 'number', description: 'New level' },
-                    stats: {
                         type: 'object',
                         properties: {
-                            STR: { type: 'number' },
-                            DEX: { type: 'number' },
-                            CON: { type: 'number' },
-                            INT: { type: 'number' },
-                            WIS: { type: 'number' },
-                            CHA: { type: 'number' }
+                            id: { type: 'string' },
+                            description: { type: 'string' },
+                            diceRoll: { type: 'string', description: 'Dice notation if a roll is required (e.g. "2d6+3")' },
+                            diceReason: { type: 'string', description: 'Reason for the dice roll' }
                         },
-                        description: 'Updated stats object'
+                        required: ['id', 'description']
+                    }
+                },
+                characterUpdates: {
+                    type: 'object',
+                    properties: {
+                        hp: { type: 'number' }
+                    }
+                },
+                inventoryUpdates: {
+                    type: 'object',
+                    properties: {
+                        add: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    slug: { type: 'string' },
+                                    name: { type: 'string' },
+                                    description: { type: 'string' },
+                                    quantity: { type: 'number' }
+                                },
+                                required: ['slug', 'name', 'description', 'quantity']
+                            }
+                        },
+                        remove: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    slug: { type: 'string' },
+                                    quantityChange: { type: 'number' }
+                                },
+                                required: ['slug', 'quantityChange']
+                            }
+                        }
                     }
                 }
-            }
+            },
+            required: ['narrative', 'actions']
         }
     }
-];
+} as const;
 
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { messages } = body;
+        const { messages, character } = body;
 
         if (!messages || !Array.isArray(messages)) {
             return NextResponse.json(
                 { error: 'Invalid request body: messages array is required' },
+                { status: 400 }
+            );
+        }
+
+        if (!character) {
+            return NextResponse.json(
+                { error: 'Invalid request body: character context is required' },
                 { status: 400 }
             );
         }
@@ -146,94 +104,66 @@ export async function POST(req: Request) {
 
         const openai = new OpenAI({ apiKey, baseURL });
 
+        // Generate system prompt with character context
+        const systemPrompt = getGMSystemPrompt(character as Character);
+
         // Translate agnostic messages to OpenAI format
         const openAIMessages: OpenAI.Chat.ChatCompletionMessageParam[] = messages.map((msg: Message) => {
-            if (msg.role === 'tool') {
-                return {
-                    role: 'tool',
-                    tool_call_id: msg.toolCallId,
-                    content: JSON.stringify(msg.content) // OpenAI expects string content for tool results
-                };
-            }
-
-            if (msg.role === 'assistant') {
-                const toolCalls = msg.toolCalls?.map(tc => ({
-                    id: tc.id,
-                    type: 'function' as const,
-                    function: {
-                        name: tc.tool.name,
-                        arguments: JSON.stringify(tc.tool.args)
-                    }
-                }));
-
-                return {
-                    role: 'assistant',
-                    content: msg.content,
-                    tool_calls: toolCalls
-                } as OpenAI.Chat.ChatCompletionMessageParam;
-            }
-
             return {
                 role: msg.role,
                 content: msg.content || ''
-            };
+            } as OpenAI.Chat.ChatCompletionMessageParam;
         });
 
         const completion = await openai.chat.completions.create({
             model,
-            messages: openAIMessages,
-            tools: OPENAI_TOOLS,
-            tool_choice: 'auto',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                ...openAIMessages
+            ],
+            response_format: GM_RESPONSE_SCHEMA,
             temperature: 0.7,
         });
 
-        const responseMessage = completion.choices[0].message;
-        const openAIToolCalls = responseMessage.tool_calls;
+        const responseContent = completion.choices[0].message.content;
 
-        let toolCalls: AssistantMessage['toolCalls'];
-
-        if (openAIToolCalls) {
-            toolCalls = openAIToolCalls.map(tc => {
-                if (tc.type !== 'function') {
-                    throw new Error(`Unexpected tool type: ${tc.type}`);
-                }
-
-                const args = JSON.parse(tc.function.arguments);
-                let tool: GameTool;
-
-                switch (tc.function.name) {
-                    case 'roll_dice':
-                        tool = { name: 'roll_dice', args: args };
-                        break;
-                    case 'add_inventory':
-                        tool = { name: 'add_inventory', args: args };
-                        break;
-                    case 'update_inventory':
-                        tool = { name: 'update_inventory', args: args };
-                        break;
-                    case 'update_character':
-                        tool = { name: 'update_character', args: args };
-                        break;
-                    case 'get_character_stats':
-                        tool = { name: 'get_character_stats', args: {} };
-                        break;
-                    default:
-                        throw new Error(`Unknown tool returned from LLM: ${tc.function.name}`);
-                }
-
-                return {
-                    id: tc.id,
-                    tool
-                };
-            });
+        if (!responseContent) {
+            throw new Error('No content received from LLM');
         }
 
-        // Translate OpenAI response to agnostic format
+        let parsedResponse;
+        try {
+            parsedResponse = JSON.parse(responseContent);
+        } catch (e) {
+            console.error('Failed to parse LLM response:', responseContent);
+            throw new Error('Invalid JSON response from LLM');
+        }
+
+        // Transform nulls to undefined for optional fields to match TypeScript interfaces
+        const actions: GameAction[] = parsedResponse.actions.map((a: any) => ({
+            id: a.id,
+            description: a.description,
+            diceRoll: a.diceRoll || undefined,
+            diceReason: a.diceReason || undefined
+        }));
+
+        const characterUpdates: CharacterUpdates | undefined = parsedResponse.characterUpdates ? {
+            hp: parsedResponse.characterUpdates.hp || undefined
+        } : undefined;
+
+        const inventoryUpdates: InventoryUpdates | undefined = parsedResponse.inventoryUpdates ? {
+            add: parsedResponse.inventoryUpdates.add || undefined,
+            remove: parsedResponse.inventoryUpdates.remove || undefined
+        } : undefined;
+
+        // Construct agnostic response
         const agnosticResponse: LLMResponse = {
             message: {
                 role: 'assistant',
-                content: responseMessage.content,
-                toolCalls
+                content: parsedResponse.narrative,
+                actions,
+                characterUpdates,
+                inventoryUpdates
             }
         };
 

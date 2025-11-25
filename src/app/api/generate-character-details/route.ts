@@ -2,6 +2,36 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { CLASS_PRESETS } from '@/lib/dnd-rules';
 
+// Schema for character details response
+const CHARACTER_DETAILS_SCHEMA = {
+    type: 'json_schema',
+    json_schema: {
+        name: 'character_details',
+        schema: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: 'A fitting character name' },
+                stats: {
+                    type: 'object',
+                    properties: {
+                        STR: { type: 'number' },
+                        DEX: { type: 'number' },
+                        CON: { type: 'number' },
+                        INT: { type: 'number' },
+                        WIS: { type: 'number' },
+                        CHA: { type: 'number' }
+                    },
+                    required: ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'],
+                    additionalProperties: false
+                },
+                backstory: { type: 'string', description: 'A compelling backstory (2-3 sentences)' }
+            },
+            required: ['name', 'stats', 'backstory'],
+            additionalProperties: false
+        }
+    }
+} as const;
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
@@ -28,9 +58,9 @@ export async function POST(req: Request) {
             );
         }
 
-        const prompt = `You are creating a D&D 5e character. Generate the following in JSON format:
-
-Character Details:
+        const prompt = `You are creating a D&D 5e character.
+        
+Character Context:
 - Gender: ${gender}
 - Race: ${race}
 - Class: ${characterClass}
@@ -38,53 +68,29 @@ Character Details:
 Please generate:
 1. A fitting character name (appropriate for the race and gender)
 2. Starting stats (base: STR ${baseStats.STR}, DEX ${baseStats.DEX}, CON ${baseStats.CON}, INT ${baseStats.INT}, WIS ${baseStats.WIS}, CHA ${baseStats.CHA}). You may adjust any stat by ±1-2 points for flavor, but keep them balanced.
-3. A compelling backstory (2-3 sentences) that explains who they are, their background, and what motivates them to adventure.
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "name": "character name",
-  "stats": {
-    "STR": number,
-    "DEX": number,
-    "CON": number,
-    "INT": number,
-    "WIS": number,
-    "CHA": number
-  },
-  "backstory": "backstory text"
-}`;
+3. A compelling backstory (2-3 sentences) that explains who they are, their background, and what motivates them to adventure.`;
 
         const completion = await openai.chat.completions.create({
             model,
             messages: [
                 { role: 'user', content: prompt }
             ],
+            response_format: CHARACTER_DETAILS_SCHEMA,
             temperature: 0.8,
-            max_tokens: 300,
         });
 
-        const responseText = completion.choices[0].message.content?.trim() || '';
+        const responseContent = completion.choices[0].message.content;
 
-        // Try to parse JSON from the response
-        let parsedData;
-        try {
-            // Remove potential markdown code blocks
-            const jsonText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-            parsedData = JSON.parse(jsonText);
-        } catch (e) {
-            console.error('Failed to parse LLM response as JSON:', responseText);
-            return NextResponse.json(
-                { error: 'Failed to parse LLM response', details: responseText },
-                { status: 500 }
-            );
+        if (!responseContent) {
+            throw new Error('No content received from LLM');
         }
 
-        // Validate the response structure
-        if (!parsedData.name || !parsedData.stats || !parsedData.backstory) {
-            return NextResponse.json(
-                { error: 'Invalid LLM response structure', details: parsedData },
-                { status: 500 }
-            );
+        let parsedData;
+        try {
+            parsedData = JSON.parse(responseContent);
+        } catch (e) {
+            console.error('Failed to parse LLM response:', responseContent);
+            throw new Error('Invalid JSON response from LLM');
         }
 
         return NextResponse.json(parsedData);

@@ -1,14 +1,18 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Loader2 } from 'lucide-react';
-import { Message as DndMessage } from '@/types/dnd';
+import { Message as DndMessage, GameAction } from '@/types/dnd';
+import { ActionSelector } from './ActionSelector';
 
 interface ChatMessageProps {
     message: DndMessage;
+    onActionSelect?: (actionId: string, diceTotal?: number) => void;
+    isLastMessage?: boolean;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, onActionSelect, isLastMessage }: ChatMessageProps) {
+    const actions = message.meta?.type === 'action_request' ? message.meta.actions : undefined;
+
     return (
         <div
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -21,48 +25,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
                         : 'bg-slate-900 text-slate-300 border border-slate-800 font-serif leading-relaxed'
                     }`}
             >
-                {/* Display tool calls if present */}
-                {message.meta?.toolCalls && message.meta.toolCalls.length > 0 && (
-                    <div className="mb-3 space-y-2">
-                        {message.meta.toolCalls.map((toolCall: any, idx: number) => (
-                            <div key={idx} className="bg-slate-950/50 border border-amber-900/30 rounded px-3 py-2 text-sm">
-                                <div className="flex items-center gap-2 text-amber-400 font-mono">
-                                    <span className="text-amber-500">🛠️</span>
-                                    <span className="font-bold">{toolCall.name}</span>
-                                </div>
-                                {/* Only show result if it exists */}
-                                {toolCall.result && (
-                                    <>
-                                        {toolCall.name === 'roll_dice' && toolCall.result.description && (
-                                            <div className="mt-1 text-amber-300 flex items-center gap-2">
-                                                <span className="text-xl">🎲</span>
-                                                <span>{toolCall.result.description}</span>
-                                            </div>
-                                        )}
-                                        {(toolCall.name === 'update_inventory' || toolCall.name === 'add_inventory') && toolCall.result.message && (
-                                            <div className="mt-1 text-blue-300 flex items-center gap-2">
-                                                <span>📦</span>
-                                                <span>{toolCall.result.message}</span>
-                                            </div>
-                                        )}
-                                        {toolCall.name === 'update_character' && toolCall.result.message && (
-                                            <div className="mt-1 text-green-300 flex items-center gap-2">
-                                                <span>✨</span>
-                                                <span>{toolCall.result.message}</span>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                                {!toolCall.result && (
-                                    <div className="mt-1 text-slate-500 italic flex items-center gap-2">
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                        <span>Executing...</span>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
                 {message.role === 'user' ? (
                     message.content
                 ) : (
@@ -90,6 +52,14 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     >
                         {message.content || ''}
                     </ReactMarkdown>
+                )}
+
+                {/* Display actions if this is the latest message and actions are available */}
+                {actions && actions.length > 0 && isLastMessage && onActionSelect && (
+                    <ActionSelector
+                        actions={actions}
+                        onActionSelect={onActionSelect}
+                    />
                 )}
             </div>
         </div>

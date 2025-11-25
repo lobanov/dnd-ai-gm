@@ -6,12 +6,12 @@ import { getInitialAdventurePrompt } from '@/lib/gm-prompts';
 import { useLLM } from '@/lib/llm/use-llm';
 import { HttpLLMClient } from '@/lib/llm/client';
 import { Message as LLMMessage } from '@/lib/llm/types';
-import { convertLlmMessageToDndMessage, updateMessageWithToolResult } from '@/lib/chat-logic';
+import { convertLlmMessageToDndMessage, processCharacterUpdates, processInventoryUpdates } from '@/lib/chat-logic';
 import { ChatMessage } from './chat/ChatMessage';
 import { ChatInput } from './chat/ChatInput';
 
 export function ChatInterface() {
-    const { chatHistory, addMessage, updateMessage, character, setting } = useGameStore();
+    const { chatHistory, addMessage, character, setting, setCurrentActions } = useGameStore();
     const [input, setInput] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
     const hasInitialized = useRef(false);
@@ -24,20 +24,26 @@ export function ChatInterface() {
         if (message.role === 'assistant') {
             const aiMsg = convertLlmMessageToDndMessage(message);
             addMessage(aiMsg);
-        } else if (message.role === 'tool') {
-            const store = useGameStore.getState();
-            const updateResult = updateMessageWithToolResult(store.chatHistory, message.toolCallId, message.content);
 
-            if (updateResult) {
-                updateMessage(updateResult.message.id, {
-                    meta: updateResult.message.meta
-                });
+            // Update store with available actions
+            if (message.actions) {
+                setCurrentActions(message.actions);
+            }
+
+            // Process updates
+            const store = useGameStore.getState();
+            if (message.characterUpdates) {
+                processCharacterUpdates(message.characterUpdates, store);
+            }
+            if (message.inventoryUpdates) {
+                processInventoryUpdates(message.inventoryUpdates, store);
             }
         }
     };
 
     const { sendMessage, isLoading } = useLLM({
         client,
+        character,
         onMessageReceived: handleMessageReceived,
         onError: (error) => {
             const errorMsg: DndMessage = {
@@ -84,6 +90,49 @@ export function ChatInterface() {
         await sendMessage(input);
     };
 
+    const handleActionSelect = async (actionId: string, diceTotal?: number) => {
+        if (isLoading) return;
+
+        // Construct payload with character context
+        const characterState = {
+            name: character.name,
+            class: character.class,
+            level: character.level,
+            hp: character.hp,
+            maxHp: character.maxHp,
+            stats: character.stats,
+            inventory: character.inventory
+        };
+
+        const actionPayload = {
+            actionId,
+            diceTotal
+        };
+
+        const content = `[CHARACTER STATE]
+${JSON.stringify(characterState)}
+
+[ACTION]
+${JSON.stringify(actionPayload)}`;
+
+        // Add user message to chat (simplified for display)
+        const displayContent = diceTotal
+            ? `I choose action: ${actionId} (Rolled: ${diceTotal})`
+            : `I choose action: ${actionId}`;
+
+        const userMsg: DndMessage = {
+            id: Date.now().toString(),
+            role: 'user',
+            content: displayContent,
+            timestamp: Date.now(),
+        };
+
+        addMessage(userMsg);
+        setCurrentActions([]); // Clear actions while waiting
+
+        await sendMessage(content);
+    };
+
     return (
         <div className="flex flex-col h-full bg-slate-950 text-slate-200 rounded-lg overflow-hidden border border-slate-800">
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -92,8 +141,13 @@ export function ChatInterface() {
                         The adventure begins...
                     </div>
                 )}
-                {chatHistory.map((msg) => (
-                    <ChatMessage key={msg.id} message={msg} />
+                {chatHistory.map((msg, idx) => (
+                    <ChatMessage
+                        key={msg.id}
+                        message={msg}
+                        isLastMessage={idx === chatHistory.length - 1}
+                        onActionSelect={handleActionSelect}
+                    />
                 ))}
                 {isLoading && (
                     <div className="flex justify-start">
@@ -105,12 +159,15 @@ export function ChatInterface() {
                 )}
             </div>
 
-            <ChatInput
-                input={input}
-                setInput={setInput}
-                onSend={handleSend}
-                isLoading={isLoading}
-            />
+            {/* Only show text input if no actions are available (e.g. initial setup or error recovery) */}
+            {(!chatHistory.length || chatHistory[chatHistory.length - 1]?.meta?.type !== 'action_request') && (
+                <ChatInput
+                    input={input}
+                    setInput={setInput}
+                    onSend={handleSend}
+                    isLoading={isLoading}
+                />
+            )}
         </div>
     );
 }

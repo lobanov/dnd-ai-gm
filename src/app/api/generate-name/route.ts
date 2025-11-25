@@ -1,6 +1,22 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
+// Schema for name generation response
+const NAME_GENERATION_SCHEMA = {
+    type: 'json_schema',
+    json_schema: {
+        name: 'character_name',
+        schema: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: 'A creative and fitting fantasy name' }
+            },
+            required: ['name'],
+            additionalProperties: false
+        }
+    }
+} as const;
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
@@ -21,21 +37,32 @@ export async function POST(req: Request) {
 
         const genderText = gender ? ` The character is ${gender.toLowerCase()}.` : '';
         const raceText = race ? ` The character is a ${race}.` : '';
-        const prompt = `Generate a single, creative, and fitting fantasy name for a Dungeons & Dragons character of the class: ${characterClass}.${raceText}${genderText} 
-        Do not include any titles, descriptions, or punctuation, just the name.`;
+        const prompt = `Generate a single, creative, and fitting fantasy name for a Dungeons & Dragons character of the class: ${characterClass}.${raceText}${genderText}`;
 
         const completion = await openai.chat.completions.create({
             model,
             messages: [
                 { role: 'user', content: prompt }
             ],
+            response_format: NAME_GENERATION_SCHEMA,
             temperature: 0.7,
-            max_tokens: 20,
         });
 
-        const generatedName = completion.choices[0].message.content?.trim().replace(/["\.]/g, '') || '';
+        const responseContent = completion.choices[0].message.content;
 
-        return NextResponse.json({ name: generatedName });
+        if (!responseContent) {
+            throw new Error('No content received from LLM');
+        }
+
+        let parsedData;
+        try {
+            parsedData = JSON.parse(responseContent);
+        } catch (e) {
+            console.error('Failed to parse LLM response:', responseContent);
+            throw new Error('Invalid JSON response from LLM');
+        }
+
+        return NextResponse.json(parsedData);
     } catch (error: any) {
         console.error('LLM Error:', error);
         return NextResponse.json(

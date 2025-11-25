@@ -9,6 +9,8 @@ interface CharacterSelectionStepProps {
     selectedClass: string;
     setSelectedClass: (cls: string) => void;
     onNext: () => void;
+    onQuickStart?: () => void;
+    hasPreviousData?: boolean;
 }
 
 const GENDERS = ['Male', 'Female'];
@@ -21,7 +23,9 @@ export function CharacterSelectionStep({
     setSelectedRace,
     selectedClass,
     setSelectedClass,
-    onNext
+    onNext,
+    onQuickStart,
+    hasPreviousData
 }: CharacterSelectionStepProps) {
     return (
         <div className="space-y-6">
@@ -94,6 +98,17 @@ export function CharacterSelectionStep({
             >
                 Continue to Character Details
             </button>
+
+            {onQuickStart && (
+                <button
+                    onClick={onQuickStart}
+                    className="w-full bg-transparent hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-medium py-3 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors"
+                >
+                    {hasPreviousData
+                        ? 'Quick Start (Reuse Previous Character)'
+                        : 'Quick Start (Skip Character Generation)'}
+                </button>
+            )}
         </div>
     );
 }

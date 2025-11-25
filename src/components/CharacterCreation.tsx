@@ -12,11 +12,17 @@ const GENDERS = ['Male', 'Female'];
 
 type Step = 1 | 2 | 3;
 
+const STORAGE_KEY_DETAILS = 'dnd-last-character-details';
+const STORAGE_KEY_WORLD = 'dnd-last-world';
+
 export function CharacterCreation() {
     const { setCharacter, setSetting, startGame } = useGameStore();
 
     // Step tracking
     const [currentStep, setCurrentStep] = useState<Step>(1);
+
+    // Track if we have previously generated data available for quick start
+    const [hasPreviousData, setHasPreviousData] = useState(false);
 
     // Step 1 - Selection
     const [selectedClass, setSelectedClass] = useState(CLASSES[0]);
@@ -32,6 +38,19 @@ export function CharacterCreation() {
     const [generatedWorld, setGeneratedWorld] = useState<GeneratedWorld | null>(null);
     const [isGeneratingWorld, setIsGeneratingWorld] = useState(false);
     const [worldError, setWorldError] = useState<string | null>(null);
+
+    // Load previously generated data from localStorage on mount
+    useEffect(() => {
+        try {
+            const storedDetails = localStorage.getItem(STORAGE_KEY_DETAILS);
+            const storedWorld = localStorage.getItem(STORAGE_KEY_WORLD);
+            if (storedDetails && storedWorld) {
+                setHasPreviousData(true);
+            }
+        } catch (error) {
+            console.error('Failed to load previous data:', error);
+        }
+    }, []);
 
     // Auto-generate when entering step 2
     useEffect(() => {
@@ -66,6 +85,9 @@ export function CharacterCreation() {
                 console.error('Failed to generate details:', data.error);
             } else {
                 setGeneratedDetails(data);
+                // Save to localStorage for future quick starts
+                localStorage.setItem(STORAGE_KEY_DETAILS, JSON.stringify(data));
+                setHasPreviousData(true);
             }
         } catch (error) {
             console.error('Failed to generate details:', error);
@@ -97,6 +119,9 @@ export function CharacterCreation() {
                 console.error('Failed to generate world:', data.error);
             } else {
                 setGeneratedWorld(data);
+                // Save to localStorage for future quick starts
+                localStorage.setItem(STORAGE_KEY_WORLD, JSON.stringify(data));
+                setHasPreviousData(true);
             }
         } catch (error) {
             console.error('Failed to generate world:', error);
@@ -124,6 +149,55 @@ export function CharacterCreation() {
         startGame();
     };
 
+    const handleQuickStart = () => {
+        try {
+            // Try to load previously generated data from localStorage
+            const storedDetails = localStorage.getItem(STORAGE_KEY_DETAILS);
+            const storedWorld = localStorage.getItem(STORAGE_KEY_WORLD);
+
+            let detailsToUse: GeneratedDetails;
+            let worldToUse: GeneratedWorld;
+
+            if (storedDetails && storedWorld) {
+                // Reuse previously generated character and world
+                detailsToUse = JSON.parse(storedDetails);
+                worldToUse = JSON.parse(storedWorld);
+            } else {
+                // Fallback to basic defaults if no previous data exists
+                detailsToUse = {
+                    name: `${selectedRace} ${selectedClass}`,
+                    stats: CLASS_PRESETS[selectedClass],
+                    backstory: `A ${selectedGender.toLowerCase()} ${selectedRace.toLowerCase()} ${selectedClass.toLowerCase()} ready for adventure.`
+                };
+
+                worldToUse = {
+                    inventory: [
+                        { name: 'Basic Sword', description: 'A simple but reliable weapon', quantity: 1 },
+                        { name: 'Leather Armor', description: 'Light protective gear', quantity: 1 },
+                        { name: 'Healing Potion', description: 'Restores health when consumed', quantity: 2 },
+                    ],
+                    setting: 'You stand at the entrance of a mysterious forest, ready to begin your adventure.'
+                };
+            }
+
+            const newCharacter = createCharacter(
+                {
+                    class: selectedClass,
+                    race: selectedRace,
+                    gender: selectedGender,
+                },
+                detailsToUse,
+                worldToUse
+            );
+
+            setCharacter(newCharacter);
+            setSetting(worldToUse.setting);
+            startGame();
+        } catch (error) {
+            console.error('Failed to quick start:', error);
+        }
+    };
+
     return (
         <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-slate-200 p-4 overflow-y-auto">
             <div className="w-full max-w-2xl space-y-8 p-8 bg-slate-900 rounded-xl border border-slate-800 shadow-2xl my-8">
@@ -145,6 +219,8 @@ export function CharacterCreation() {
                             setCurrentStep(2);
                             setGeneratedDetails(null);
                         }}
+                        onQuickStart={handleQuickStart}
+                        hasPreviousData={hasPreviousData}
                     />
                 )}
 

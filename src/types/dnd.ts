@@ -30,6 +30,13 @@ export interface Character {
   backstory?: string;
 }
 
+export interface GameAction {
+  id: string;
+  description: string;
+  diceRoll?: string;
+  diceReason?: string;
+}
+
 export type MessageRole = 'user' | 'assistant' | 'system';
 
 export interface Message {
@@ -38,18 +45,13 @@ export interface Message {
   content: string;
   timestamp: number;
   meta?: {
-    type: 'roll' | 'narration' | 'dialogue' | 'tool';
+    type: 'roll' | 'narration' | 'dialogue' | 'action_request';
     rollResult?: {
       dice: string;
       result: number;
       total: number;
     };
-    toolCalls?: Array<{
-      name: string;
-      arguments: any;
-      result: any;
-    }>;
-    _toolCallIds?: string[];
+    actions?: GameAction[];
   };
 }
 

@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Character, GameState, Message, Item } from '@/types/dnd';
+import { Character, GameState, Message, Item, GameAction } from '@/types/dnd';
 import { INITIAL_CHARACTER } from '@/lib/dnd-rules';
 
 export interface GameStore extends GameState {
     isGameStarted: boolean;
+    currentActions: GameAction[];
     startGame: () => void;
     setCharacter: (character: Character) => void;
     updateCharacter: (updates: Partial<Character>) => void;
@@ -15,6 +16,7 @@ export interface GameStore extends GameState {
     removeItem: (itemId: string) => void;
     setSetting: (setting: string) => void;
     resetGame: () => void;
+    setCurrentActions: (actions: GameAction[]) => void;
 }
 
 export const useGameStore = create<GameStore>()(
@@ -25,6 +27,7 @@ export const useGameStore = create<GameStore>()(
             isConfigured: false,
             isGameStarted: false,
             setting: undefined,
+            currentActions: [],
 
             startGame: () => set({ isGameStarted: true }),
 
@@ -79,7 +82,10 @@ export const useGameStore = create<GameStore>()(
                     chatHistory: [],
                     isGameStarted: false,
                     setting: undefined,
+                    currentActions: [],
                 })),
+
+            setCurrentActions: (actions) => set({ currentActions: actions }),
         }),
         {
             name: 'dnd-ai-game-storage',

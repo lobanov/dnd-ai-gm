@@ -7,7 +7,7 @@ export class HttpLLMClient implements LLMClient {
         this.endpoint = endpoint;
     }
 
-    async sendMessage(messages: Message[]): Promise<LLMResponse> {
+    async sendMessage(messages: Message[], character: any): Promise<LLMResponse> {
         try {
             // Filter out tool messages that contain non-serializable content if any (though our types enforce serializable results now)
             // We also need to ensure we're sending a clean payload to the backend
@@ -16,7 +16,7 @@ export class HttpLLMClient implements LLMClient {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ messages }),
+                body: JSON.stringify({ messages, character }),
             });
 
             if (!response.ok) {

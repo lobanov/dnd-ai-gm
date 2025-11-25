@@ -1,6 +1,39 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
+// Schema for world generation response
+const WORLD_GENERATION_SCHEMA = {
+    type: 'json_schema',
+    json_schema: {
+        name: 'world_generation',
+        schema: {
+            type: 'object',
+            properties: {
+                inventory: {
+                    type: 'array',
+                    description: 'Starting inventory (3-5 items)',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            name: { type: 'string' },
+                            description: { type: 'string' },
+                            quantity: { type: 'number' }
+                        },
+                        required: ['name', 'description', 'quantity'],
+                        additionalProperties: false
+                    }
+                },
+                setting: {
+                    type: 'string',
+                    description: 'A paragraph with concise setting description'
+                }
+            },
+            required: ['inventory', 'setting'],
+            additionalProperties: false
+        }
+    }
+} as const;
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
@@ -28,56 +61,35 @@ Character:
 - Backstory: ${backstory}
 
 Please generate:
-1. Starting inventory (3-5 items) appropriate for a ${characterClass}. Include weapons, armor, and useful adventuring gear. Each item should have a name, description, and quantity.
-2. A rich setting description (2-3 paragraphs) that:
+1. Starting inventory (3-5 items) appropriate for a ${characterClass}:
+   - Include weapons, armor, and useful adventuring gear.
+2. A paragraph with concise setting description (plain text only) that:
    - Describes the world/realm they inhabit
    - Describes their current location
    - Sets up an initial situation or hook that connects to their backstory
-   - Creates an engaging starting point for adventure
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "inventory": [
-    {
-      "name": "item name",
-      "description": "item description",
-      "quantity": number
-    }
-  ],
-  "setting": "setting description text"
-}`;
+   - Creates an engaging starting point for adventure`;
 
         const completion = await openai.chat.completions.create({
             model,
             messages: [
                 { role: 'user', content: prompt }
             ],
+            response_format: WORLD_GENERATION_SCHEMA,
             temperature: 0.8,
-            max_tokens: 600,
         });
 
-        const responseText = completion.choices[0].message.content?.trim() || '';
+        const responseContent = completion.choices[0].message.content;
 
-        // Try to parse JSON from the response
-        let parsedData;
-        try {
-            // Remove potential markdown code blocks
-            const jsonText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-            parsedData = JSON.parse(jsonText);
-        } catch (e) {
-            console.error('Failed to parse LLM response as JSON:', responseText);
-            return NextResponse.json(
-                { error: 'Failed to parse LLM response', details: responseText },
-                { status: 500 }
-            );
+        if (!responseContent) {
+            throw new Error('No content received from LLM');
         }
 
-        // Validate the response structure
-        if (!parsedData.inventory || !Array.isArray(parsedData.inventory) || !parsedData.setting) {
-            return NextResponse.json(
-                { error: 'Invalid LLM response structure', details: parsedData },
-                { status: 500 }
-            );
+        let parsedData;
+        try {
+            parsedData = JSON.parse(responseContent);
+        } catch (e) {
+            console.error('Failed to parse LLM response:', responseContent);
+            throw new Error('Invalid JSON response from LLM');
         }
 
         return NextResponse.json(parsedData);
