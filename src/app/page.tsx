@@ -27,7 +27,7 @@ export default function Home() {
       <aside className="w-80 flex flex-col gap-4 p-4 border-r border-slate-800 bg-slate-950/50 overflow-y-auto">
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-amber-500 font-serif tracking-tight">AI Dungeon Master</h1>
-          <p className="text-xs text-slate-500">Powered by OpenAI</p>
+          <p className="text-xs text-slate-500">Powered by AI</p>
         </div>
 
         <CharacterSheet />
