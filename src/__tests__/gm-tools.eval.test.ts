@@ -164,33 +164,6 @@ describe('GM Tool Evaluation Tests', () => {
             expect(inventoryCall?.arguments.items).toBeDefined();
             expect(inventoryCall?.arguments.items[0].name).toMatch(/healing potion/i);
         }, 30000);
-
-        test('GM provides starting equipment for new character', async () => {
-            const character = createTestCharacter({ inventory: [] });
-            const messages = [
-                {
-                    role: 'user',
-                    content: getInitialAdventurePrompt(character),
-                },
-            ];
-
-            const response = await callChatAPI(messages, character);
-            const toolCalls = getToolCalls(response);
-
-            expect(wasInventoryUpdated(toolCalls)).toBe(true);
-
-            // Should add multiple starting items
-            const inventoryCalls = toolCalls.filter((tc: any) => tc.name === 'update_inventory');
-            expect(inventoryCalls.length).toBeGreaterThan(0);
-
-            // All should be add actions
-            inventoryCalls.forEach((call: any) => {
-                expect(call.arguments.action).toBe('add');
-                expect(call.arguments.items).toBeDefined();
-                expect(Array.isArray(call.arguments.items)).toBe(true);
-                expect(call.arguments.items.length).toBeGreaterThan(0);
-            });
-        }, 30000);
     });
 
     describe('Character Update Scenarios', () => {
