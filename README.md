@@ -1,36 +1,163 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# D&D AI Game Master
+
+An interactive Dungeons & Dragons game powered by AI, where the LLM serves as your Game Master. Create characters, embark on adventures, and experience dynamic storytelling with real-time dice rolls and character progression.
+
+## Features
+
+- **AI-Powered Game Master**: LLM-driven narrative and decision-making
+- **3-Step Character Creation**: 
+  - Select gender, race, and class
+  - AI generates character name, stats, and backstory
+  - AI creates a personalized starting world and inventory
+- **Interactive Gameplay**:
+  - Natural language interaction with the GM
+  - Automatic dice rolling with D&D 5e rules
+  - Real-time character and inventory management
+  - Rich markdown formatting for narrative
+- **Tool-Based Actions**: 
+  - Dice rolls (`roll_dice`)
+  - Inventory management (`add_inventory`, `update_inventory`)
+  - Character updates (`update_character`, `get_character_stats`)
+
+## Tech Stack
+
+- **Framework**: Next.js 16 with React 19
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS 4
+- **State Management**: Zustand with persistence
+- **LLM Integration**: OpenAI API with function calling
+- **Testing**: Jest with ts-jest
+- **Markdown Rendering**: react-markdown with remark-gfm
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js 20+ and npm
+- OpenAI API key
+
+### Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone <repository-url>
+cd dnd-ai-app
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Set up environment variables:
+```bash
+cp .env.local.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Edit `.env.local` and add your OpenAI API key:
+```
+OPENAI_API_KEY=your_api_key_here
+```
 
-## Learn More
+4. Run the development server:
+```bash
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/
+├── app/                      # Next.js app directory
+│   ├── api/                  # API routes
+│   │   ├── chat/             # Main LLM chat endpoint
+│   │   ├── generate-character-details/
+│   │   └── generate-world/
+│   └── page.tsx              # Main application page
+├── components/               # React components
+│   ├── character-creation/   # Character creation steps
+│   ├── chat/                 # Chat interface components
+│   ├── CharacterCreation.tsx
+│   ├── CharacterSheet.tsx
+│   ├── ChatInterface.tsx
+│   └── Tooltip.tsx
+├── lib/                      # Business logic
+│   ├── llm/                  # LLM client and tools
+│   ├── character-creation.ts # Character creation logic
+│   ├── chat-logic.ts         # Chat message handling
+│   ├── dnd-rules.ts          # D&D 5e rules
+│   ├── game-logic.ts         # Tool processing
+│   ├── gm-prompts.ts         # System prompts
+│   └── store.ts              # Zustand state management
+├── types/                    # TypeScript types
+│   └── dnd.ts
+└── __tests__/                # Unit tests
+```
 
-## Deploy on Vercel
+## Available Scripts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm start` - Start production server
+- `npm test` - Run unit tests (excludes slow eval tests)
+- `npm run test:eval` - Run evaluation tests
+- `npm run test:watch` - Run tests in watch mode
+- `npm run test:coverage` - Generate test coverage report
+- `npm run lint` - Run ESLint
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Architecture
+
+### Game Logic
+Game logic is separated from React components for better testability:
+- **Character Creation Logic** (`lib/character-creation.ts`): HP calculation, inventory normalization, character assembly
+- **Chat Logic** (`lib/chat-logic.ts`): Message conversion, tool result updates
+- **Game Logic** (`lib/game-logic.ts`): Tool call processing
+
+### LLM Integration
+- **Client** (`lib/llm/client.ts`): HTTP client for OpenAI API
+- **Tools** (`lib/llm/gm-tools.ts`): Function definitions for LLM tool calling
+- **Hook** (`lib/llm/use-llm.ts`): React hook for LLM interaction
+
+### State Management
+Zustand store with local storage persistence:
+- Character data (stats, inventory, HP)
+- Chat history
+- Game settings
+
+## Testing
+
+The project uses Jest for unit testing with the following structure:
+
+- **Unit Tests**: Fast tests for business logic (`src/lib/__tests__/`)
+- **Integration Tests**: Frontend state management (`src/__tests__/`)
+- **Evaluation Tests**: LLM behavior tests (slow, run separately)
+
+Run specific test suites:
+```bash
+npm test                    # Fast unit tests only
+npm run test:eval          # LLM evaluation tests
+npm run test:watch         # Watch mode for development
+```
+
+## Documentation
+
+Detailed documentation is available in the `spec/` directory:
+
+- **[Game Logic](spec/game-logic.md)**: Core game logic components
+- **[React Components](spec/react-components.md)**: Component hierarchy and design
+- **[GM Protocol](spec/gm-protocol.md)**: LLM tool definitions and protocols (if exists)
+
+## Contributing
+
+1. Create a feature branch
+2. Make your changes
+3. Add tests for new functionality
+4. Run `npm test` to ensure all tests pass
+5. Run `npm run lint` to check code style
+6. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License.
