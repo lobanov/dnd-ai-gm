@@ -33,7 +33,8 @@ const GM_RESPONSE_SCHEMA = {
                             id: { type: 'string' },
                             description: { type: 'string' },
                             diceRoll: { type: 'string', description: 'Dice notation if a roll is required (e.g. "2d6+3")' },
-                            diceReason: { type: 'string', description: 'Reason for the dice roll' }
+                            diceReason: { type: 'string', description: 'Reason for the dice roll' },
+                            difficultyClass: { type: 'number', description: 'Difficulty Class (DC) for the check if applicable' }
                         },
                         required: ['id', 'description']
                     }
@@ -144,7 +145,8 @@ export async function POST(req: Request) {
             id: a.id,
             description: a.description,
             diceRoll: a.diceRoll || undefined,
-            diceReason: a.diceReason || undefined
+            diceReason: a.diceReason || undefined,
+            difficultyClass: a.difficultyClass || undefined
         }));
 
         const characterUpdates: CharacterUpdates | undefined = parsedResponse.characterUpdates ? {

@@ -1,17 +1,23 @@
 # GM Protocol Specification
 
-This document describes the interaction protocol between the frontend (UI/React) and the backend (LLM/API) in the D&D AI Game Master application, with a focus on how tool calls and chat history are managed.
+This document describes the interaction protocol between the frontend (UI/React) and the backend (LLM/API) in the D&D AI Game Master application.
+
+**Current Architecture**: Structured Output (JSON Mode)
+**Previous Architecture**: Tool Calling Loop (Deprecated)
 
 ---
 
 ## Overview
 
-The application uses a **conversational loop** where:
-1. User sends a message
-2. Backend processes it with LLM
-3. LLM may request tool calls (dice rolls, inventory updates, etc.)
-4. Frontend executes tools and sends results back
-5. Loop continues until LLM provides a final response (no more tool calls)
+The application uses a **Structured Output** protocol where:
+1.  **User sends a message** (or selects an action).
+2.  **Backend generates a single structured response** containing:
+    -   Narrative text
+    -   Available next actions
+    -   State updates (HP, Inventory)
+3.  **Frontend applies updates immediately** and displays the narrative.
+
+Unlike the previous tool-calling loop, this approach is **single-turn**: the LLM decides everything (narrative, outcomes, state changes) in one pass, ensuring consistency and reducing latency.
 
 ---
 
@@ -19,26 +25,27 @@ The application uses a **conversational loop** where:
 
 ### Frontend → Backend
 
-The frontend sends an array of messages to `/api/chat`:
+The frontend sends the conversation history and current character context to `/api/chat`:
 
 ```typescript
+interface ChatRequest {
+  messages: Message[];
+  character: Character; // Full character state for context
+}
+
 interface Message {
-  role: 'user' | 'assistant' | 'system' | 'tool';
-  content: string | GameToolResult;
-  toolCallId?: string;        // Only for tool messages
-  toolCalls?: ToolCall[];     // Only for assistant messages
+  role: 'user' | 'assistant' | 'system';
+  content: string;
 }
 ```
 
-**Message Roles**:
-- `user`: Player input (e.g., "I search the room")
-- `assistant`: Previous LLM responses (for context)
-- `system`: System prompts (e.g., initial adventure prompt)
-- `tool`: Results from tool executions
+**Context Management**:
+-   **Narrative Focus**: The message history sent to the LLM should primarily contain the narrative flow.
+-   **Action Stripping**: Previous structured actions (the buttons the user clicked) are generally *not* included in the history as raw JSON. Instead, the user's *selection* is recorded as a user message (e.g., "I search the room").
 
 ### Backend → Frontend
 
-The backend returns:
+The backend returns a structured response derived from the LLM's JSON output:
 
 ```typescript
 interface LLMResponse {
@@ -47,467 +54,142 @@ interface LLMResponse {
 
 interface AssistantMessage {
   role: 'assistant';
-  content: string | null;
-  toolCalls?: Array<{
-    id: string;
-    tool: GameTool;
-  }>;
+  content: string; // The main narrative
+  
+  // Structured Data
+  actions: GameAction[];
+  characterUpdates?: CharacterUpdates;
+  inventoryUpdates?: InventoryUpdates;
+}
+
+interface GameAction {
+  id: string;
+  description: string;
+  diceRoll?: string;   // e.g., "1d20+5"
+  diceReason?: string; // e.g., "Investigation check"
+  difficultyClass?: number; // DC for the check
 }
 ```
 
 ---
 
-## Chat History Management
+## Structured Response Protocol
 
-### Frontend State (useLLM hook)
+### JSON Schema
 
-**Location**: `src/lib/llm/use-llm.ts`
+The backend enforces a strict JSON schema on the LLM using OpenAI's `response_format`. This ensures the LLM *always* returns valid data for the game engine.
 
-The `useLLM` hook maintains the **complete conversation history** in memory:
+**Schema Definition** (`src/app/api/chat/route.ts`):
 
-```typescript
-const [messages, setMessages] = useState<Message[]>([]);
-```
-
-**Key Behaviors**:
-1. **Optimistic Updates**: User messages are immediately added to history before sending
-2. **Synchronous Ref**: `messagesRef.current` keeps the latest state for async callbacks
-3. **Continuous Loop**: Automatically sends tool results back to LLM until conversation completes
-
-**Message Flow**:
-```
-1. User input → Add to history
-2. Send to backend → Get assistant response
-3. Add assistant response to history
-4. If toolCalls exist:
-   a. Execute tools locally
-   b. Add tool result messages to history
-   c. Send updated history to backend (goto step 2)
-5. If no toolCalls → Conversation complete
-```
-
-### Backend Processing
-
-**Location**: `src/app/api/chat/route.ts`
-
-The backend is **stateless** - it receives the full conversation history on each request.
-
-**Translation Flow**:
-1. **Receive agnostic messages** from frontend
-2. **Translate to OpenAI format**:
-   ```typescript
-   // Tool messages require special handling
-   if (msg.role === 'tool') {
-     return {
-       role: 'tool',
-       tool_call_id: msg.toolCallId,
-       content: JSON.stringify(msg.content)  // Serialize result
-     };
-   }
-   ```
-3. **Send to OpenAI** with tool definitions
-4. **Translate response back** to agnostic format
-5. **Return to frontend**
-
----
-
-## Tool Call Protocol
-
-### Tool Definitions
-
-**Backend** (`src/app/api/chat/route.ts`): Defines tools for OpenAI:
-
-```typescript
-const OPENAI_TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'roll_dice',
-      description: 'Roll dice for skill checks, attacks, damage...',
-      parameters: {
-        type: 'object',
-        properties: {
-          dice: { type: 'string', description: 'Dice notation (e.g., "1d20+5")' },
-          reason: { type: 'string', description: 'Reason for the roll' }
+```json
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "gm_response",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "narrative": { "type": "string" },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "diceRoll": { "type": "string" },
+              "diceReason": { "type": "string" },
+              "difficultyClass": { "type": "number" }
+            },
+            "required": ["id", "description"]
+          }
         },
-        required: ['dice', 'reason']
-      }
+        "characterUpdates": {
+          "type": "object",
+          "properties": {
+            "hp": { "type": "number" }
+          }
+        },
+        "inventoryUpdates": {
+          "type": "object",
+          "properties": {
+            "add": { "type": "array", "items": { ... } },
+            "remove": { "type": "array", "items": { ... } }
+          }
+        }
+      },
+      "required": ["narrative", "actions"]
     }
-  },
-  // ... other tools: add_inventory, update_inventory, update_character, get_character_stats
-];
+  }
+}
 ```
 
-### Tool Execution Flow
+### System Prompt
 
-#### 1. LLM Requests Tool Call
+The system prompt (`src/lib/gm-prompts.ts`) instructs the GM to:
+1.  Act as an expert Dungeon Master.
+2.  Manage rules, story, and world state.
+3.  **Determine outcomes internally**: Instead of asking the frontend to roll dice, the GM decides if a roll is needed for *future* actions, or narrates the result of *past* actions based on the user's input.
+4.  **Specify Difficulty**: For actions requiring rolls, the GM must provide the Difficulty Class (DC).
+5.  Output strictly in the defined JSON format.
 
-Backend receives LLM response with tool calls:
+---
+
+## Interaction Flow
+
+### 1. User Action
+The user types a message ("I kick down the door") or clicks a pre-defined action button.
+**Note**: When a user clicks an action button, the frontend sends the **full description** of the action (e.g., "I search the room for traps") as the user message, not just the ID. This ensures the LLM has the full context of what was attempted.
+
+### 2. Backend Processing
+The backend:
+1.  Injects the **System Prompt**.
+2.  Injects the **Character Context** (stats, inventory) so the GM knows what the player has.
+3.  Sends the **Conversation History**.
+4.  Requests a **JSON completion** from the LLM.
+
+### 3. LLM Decision
+The LLM processes the input and decides:
+-   **Narrative**: "You kick the door with all your might..."
+-   **Consequences**: Did the door break? Did the player take damage?
+-   **Next Options**: What can the player do now? (Enter room, Listen, etc.)
+
+It constructs the JSON object:
 ```json
 {
-  "role": "assistant",
-  "content": null,
-  "tool_calls": [
-    {
-      "id": "call_abc123",
-      "type": "function",
-      "function": {
-        "name": "roll_dice",
-        "arguments": "{\"dice\":\"1d20+5\",\"reason\":\"Perception check\"}"
-      }
-    }
+  "narrative": "The door splinters and crashes open! You take 1 point of bruising damage from the impact.",
+  "characterUpdates": { "hp": 14 },
+  "actions": [
+    { "id": "enter", "description": "Enter the room" },
+    { "id": "listen", "description": "Listen for enemies", "diceRoll": "1d20+2", "diceReason": "Perception", "difficultyClass": 15 }
   ]
 }
 ```
 
-Backend translates to agnostic format and returns:
-```typescript
-{
-  message: {
-    role: 'assistant',
-    content: null,
-    toolCalls: [{
-      id: 'call_abc123',
-      tool: {
-        name: 'roll_dice',
-        args: { dice: '1d20+5', reason: 'Perception check' }
-      }
-    }]
-  }
-}
-```
-
-#### 2. Frontend Executes Tool
-
-**Location**: `src/lib/llm/use-llm.ts` → `executeTool()`
-
-The frontend executes the tool **locally** using the Zustand store:
-
-```typescript
-const executeTool = async (tool: GameTool, store: GameStore): Promise<GameToolResult> => {
-  switch (tool.name) {
-    case 'roll_dice': {
-      // Parse dice notation
-      const match = dice.match(/(\d+)d(\d+)([+-]\d+)?/);
-      const count = parseInt(match[1]);
-      const sides = parseInt(match[2]);
-      const modifier = match[3] ? parseInt(match[3]) : 0;
-      
-      // Roll dice
-      const rolls = [];
-      for (let i = 0; i < count; i++) {
-        rolls.push(Math.floor(Math.random() * sides) + 1);
-      }
-      const total = rolls.reduce((a, b) => a + b, 0) + modifier;
-      
-      return {
-        dice, reason, rolls, modifier, total,
-        description: `Rolled ${dice} for ${reason}: [${rolls.join(', ')}] + ${modifier} = ${total}`
-      };
-    }
-    
-    case 'add_inventory': {
-      // Add items to Zustand store
-      items.forEach(item => {
-        store.addItem({
-          id: `${Date.now()}-${Math.random()}`,
-          name: item.name,
-          description: item.description,
-          quantity: item.quantity
-        });
-      });
-      return { success: true, message: '...' };
-    }
-    
-    // ... other tools
-  }
-};
-```
-
-**Why Local Execution?**
-- **Immediate UI updates**: Character stats, inventory, HP change instantly
-- **Deterministic**: No network latency or errors
-- **Secure**: Server doesn't need write access to client state
-
-#### 3. Frontend Sends Tool Results Back
-
-After executing tools, frontend creates tool messages:
-
-```typescript
-const toolResults: Message[] = [];
-for (const call of toolCalls) {
-  const result = await executeTool(call.tool, store);
-  toolResults.push({
-    role: 'tool',
-    toolCallId: call.id,
-    content: result  // GameToolResult object
-  });
-}
-
-// Add to history and send back to LLM
-currentHistory = [...currentHistory, ...toolResults];
-await client.sendMessage(currentHistory);
-```
-
-#### 4. Backend Sends Tool Results to LLM
-
-Backend translates tool messages back to OpenAI format:
-
-```typescript
-if (msg.role === 'tool') {
-  return {
-    role: 'tool',
-    tool_call_id: msg.toolCallId,
-    content: JSON.stringify(msg.content)  // Serialize the result object
-  };
-}
-```
-
-LLM receives the tool results and continues the narrative:
-```json
-{
-  "role": "tool",
-  "tool_call_id": "call_abc123",
-  "content": "{\"dice\":\"1d20+5\",\"total\":18,\"description\":\"Rolled 1d20+5 for Perception check: [13] + 5 = 18\"}"
-}
-```
-
-LLM then responds with narrative incorporating the roll result:
-```
-"You rolled an 18 for Perception! You notice a hidden door behind the tapestry..."
-```
+### 4. Frontend Execution
+The frontend receives the response and:
+1.  **Updates State**: Applies `characterUpdates` (HP) and `inventoryUpdates` immediately to the Zustand store.
+2.  **Displays Narrative**: Shows the text in the chat window.
+3.  **Presents Actions**: Renders the `actions` as clickable buttons for the user.
 
 ---
 
-## Complete Conversation Example
+## State Management
 
-### Initial User Message
+### Backend (Stateless)
+The backend remains stateless. It relies on the frontend to provide the full `messages` history and the current `character` state with every request.
 
-**Frontend → Backend**:
-```json
-{
-  "messages": [
-    { "role": "system", "content": "You are a Game Master for D&D..." },
-    { "role": "user", "content": "I search the room for traps" }
-  ]
-}
-```
-
-### First LLM Response (with tool call)
-
-**Backend → Frontend**:
-```json
-{
-  "message": {
-    "role": "assistant",
-    "content": null,
-    "toolCalls": [{
-      "id": "call_1",
-      "tool": {
-        "name": "roll_dice",
-        "args": { "dice": "1d20+2", "reason": "Investigation check for traps" }
-      }
-    }]
-  }
-}
-```
-
-### Frontend Executes Tool
-
-Frontend adds assistant message to history, executes tool, and prepares tool result:
-
-**History State**:
-```json
-[
-  { "role": "system", "content": "..." },
-  { "role": "user", "content": "I search the room for traps" },
-  { "role": "assistant", "content": null, "toolCalls": [...] },
-  { 
-    "role": "tool", 
-    "toolCallId": "call_1",
-    "content": {
-      "dice": "1d20+2",
-      "total": 15,
-      "rolls": [13],
-      "modifier": 2,
-      "description": "Rolled 1d20+2 for Investigation check for traps: [13] + 2 = 15"
-    }
-  }
-]
-```
-
-### Second Request with Tool Results
-
-**Frontend → Backend** (sends updated history):
-```json
-{
-  "messages": [
-    { "role": "system", "content": "..." },
-    { "role": "user", "content": "I search the room for traps" },
-    { "role": "assistant", "content": null, "toolCalls": [...] },
-    { "role": "tool", "toolCallId": "call_1", "content": { ... } }
-  ]
-}
-```
-
-### Final LLM Response (no tool calls)
-
-**Backend → Frontend**:
-```json
-{
-  "message": {
-    "role": "assistant",
-    "content": "You rolled a 15 on your Investigation check. You carefully examine the room and discover a pressure plate near the doorway. It appears to trigger dart traps in the walls.",
-    "toolCalls": undefined
-  }
-}
-```
-
-**Loop ends** because `toolCalls` is empty.
+### Frontend (Zustand)
+The frontend is the "source of truth" for the game state.
+-   **Character Store**: Holds HP, stats, inventory. Updated by `characterUpdates` / `inventoryUpdates`.
+-   **Chat Store**: Holds the message history. Updated by `narrative`.
+-   **Action State**: Holds the list of currently available actions.
 
 ---
 
-## UI State Synchronization
+## Key Benefits of New Protocol
 
-### Store Updates
-
-**Location**: `src/lib/llm/use-llm.ts` → `executeTool()`
-
-Tools directly mutate the Zustand store:
-
-```typescript
-// Example: update_character tool
-case 'update_character': {
-  if (hp !== undefined) {
-    store.updateCharacter({ hp });  // Immediate store update
-  }
-  return { success: true, message: `HP -> ${hp}` };
-}
-```
-
-### Display in Chat
-
-**Location**: `src/components/chat/ChatMessage.tsx`
-
-Tool calls are displayed in the chat UI:
-
-```tsx
-{msg.meta?.toolCalls?.map((toolCall, idx) => (
-  <div className="tool-call-display">
-    <span>🛠️ {toolCall.name}</span>
-    {toolCall.result && (
-      <>
-        {toolCall.name === 'roll_dice' && (
-          <div>🎲 {toolCall.result.description}</div>
-        )}
-        {toolCall.name === 'update_inventory' && (
-          <div>📦 {toolCall.result.message}</div>
-        )}
-      </>
-    )}
-  </div>
-))}
-```
-
-**Timing**:
-1. Assistant message arrives → Tool call shown with "Executing..."
-2. Tool executes → Store updates immediately
-3. Tool result arrives → Tool call display updated with result
-4. Next assistant message → Narrative incorporating tool result
-
----
-
-## Error Handling
-
-### Tool Execution Errors
-
-If a tool fails:
-
-```typescript
-try {
-  const result = await executeTool(call.tool, store);
-  toolResults.push({ role: 'tool', toolCallId: call.id, content: result });
-} catch (error) {
-  // Send error back to LLM
-  toolResults.push({
-    role: 'tool',
-    toolCallId: call.id,
-    content: { success: false, message: `Error: ${error.message}` }
-  });
-}
-```
-
-LLM receives the error and can adjust narrative:
-```
-"You attempt to use the potion, but it has already been consumed."
-```
-
-### Network Errors
-
-**Frontend**: `useLLM` hook calls `onError` callback:
-```typescript
-try {
-  const response = await client.sendMessage(currentHistory);
-} catch (error) {
-  if (onError) onError(error);
-}
-```
-
-**ChatInterface** displays error message:
-```typescript
-onError: (error) => {
-  const errorMsg: DndMessage = {
-    role: 'system',
-    content: `Error: ${error.message}`,
-    timestamp: Date.now(),
-  };
-  addMessage(errorMsg);
-}
-```
-
----
-
-## Key Design Decisions
-
-### 1. Stateless Backend
-- **Pros**: Scalable, no session management, easy to debug
-- **Cons**: Full history sent on each request (bandwidth)
-- **Mitigation**: Messages are relatively small, compression could be added
-
-### 2. Frontend Tool Execution
-- **Pros**: Instant UI updates, deterministic results, reduced latency
-- **Cons**: Client must implement all tool logic
-- **Security**: OK because this is a single-player game with no PvP
-
-### 3. Continuous Loop
-- **Pros**: Handles multi-tool scenarios automatically
-- **Cons**: Could loop infinitely if LLM misbehaves
-- **Mitigation**: Could add max iteration limit (not currently implemented)
-
-### 4. Agnostic Message Format
-- **Pros**: Easy to switch LLM providers, clean separation
-- **Cons**: Requires translation layer
-- **Benefit**: Backend handles OpenAI specifics, frontend stays provider-agnostic
-
----
-
-## Available Tools
-
-| Tool | Purpose | Arguments | Returns |
-|------|---------|-----------|---------|
-| `roll_dice` | Dice rolls for checks, attacks, damage | `dice: string, reason: string` | `RollDiceResult` with rolls, total, description |
-| `add_inventory` | Add new items | `items: Array<Item>` | `InventoryResult` with success status |
-| `update_inventory` | Change item quantities | `updates: Array<{slug, quantityChange}>` | `InventoryResult` with changes |
-| `update_character` | Modify HP, stats, level | `hp?, maxHp?, level?, stats?` | `CharacterUpdateResult` |
-| `get_character_stats` | Retrieve current character data | (none) | `CharacterStatsResult` with full character |
-
----
-
-## Future Improvements
-
-1. **Message Compression**: Send only new messages instead of full history
-2. **Tool Result Streaming**: Show tool execution progress in real-time
-3. **Conversation Pruning**: Summarize old messages to reduce history size
-4. **Retry Logic**: Automatic retry on transient network failures
-5. **Tool Call Validation**: Validate tool arguments before execution
-6. **Max Iteration Limit**: Prevent infinite tool call loops
+1.  **Reliability**: JSON Schema guarantees the UI always has valid actions to render.
+2.  **Simplicity**: Removes the complex recursive loop of tool calls.
+3.  **Context Awareness**: The GM always has the latest character state injected into the prompt, preventing hallucinations about inventory or HP.
+4.  **Atomic Updates**: Narrative and state changes happen together, preventing desync (e.g., text says "you found a sword" but inventory didn't update).

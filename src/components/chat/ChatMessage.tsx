@@ -6,7 +6,7 @@ import { ActionSelector } from './ActionSelector';
 
 interface ChatMessageProps {
     message: DndMessage;
-    onActionSelect?: (actionId: string, diceTotal?: number) => void;
+    onActionSelect?: (actionId: string, actionText: string, diceTotal?: number) => void;
     isLastMessage?: boolean;
 }
 

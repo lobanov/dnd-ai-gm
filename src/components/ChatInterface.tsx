@@ -90,13 +90,13 @@ export function ChatInterface() {
         await sendMessage(input);
     };
 
-    const handleActionSelect = async (actionId: string, diceTotal?: number) => {
+    const handleActionSelect = async (actionId: string, actionText: string, diceTotal?: number) => {
         if (isLoading) return;
 
         // Construct simple action message
         const content = diceTotal
-            ? `I choose action: ${actionId} (Rolled: ${diceTotal})`
-            : `I choose action: ${actionId}`;
+            ? `I choose action: "${actionText}" (Rolled: ${diceTotal})`
+            : `I choose action: "${actionText}"`;
 
         const userMsg: DndMessage = {
             id: Date.now().toString(),

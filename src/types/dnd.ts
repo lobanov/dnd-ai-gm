@@ -35,6 +35,7 @@ export interface GameAction {
   description: string;
   diceRoll?: string;
   diceReason?: string;
+  difficultyClass?: number;
 }
 
 export type MessageRole = 'user' | 'assistant' | 'system';

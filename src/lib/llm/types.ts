@@ -15,6 +15,7 @@ export interface GameAction {
     description: string;
     diceRoll?: string; // e.g., "2d6+3"
     diceReason?: string; // What this roll is for
+    difficultyClass?: number; // DC for the check if applicable
 }
 
 export interface CharacterUpdates {

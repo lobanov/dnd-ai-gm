@@ -5,7 +5,7 @@ import { rollDice } from '@/lib/chat-logic';
 
 interface ActionSelectorProps {
     actions: GameAction[];
-    onActionSelect: (actionId: string, diceTotal?: number) => void;
+    onActionSelect: (actionId: string, actionText: string, diceTotal?: number) => void;
     disabled?: boolean;
 }
 
@@ -28,11 +28,11 @@ export function ActionSelector({ actions, onActionSelect, disabled }: ActionSele
             // Wait a moment to show result before proceeding
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            onActionSelect(action.id, result.total);
+            onActionSelect(action.id, action.description, result.total);
             setRollingActionId(null);
             setRollResult(null);
         } else {
-            onActionSelect(action.id);
+            onActionSelect(action.id, action.description);
         }
     };
 
@@ -76,8 +76,11 @@ export function ActionSelector({ actions, onActionSelect, disabled }: ActionSele
                                 )}
                             </div>
                             {action.diceReason && (
-                                <div className="text-xs text-slate-500 mt-1">
-                                    {action.diceReason}
+                                <div className="text-xs text-slate-500 mt-1 flex justify-between">
+                                    <span>{action.diceReason}</span>
+                                    {action.difficultyClass && (
+                                        <span className="text-slate-600 font-mono">DC {action.difficultyClass}</span>
+                                    )}
                                 </div>
                             )}
                         </button>

@@ -10,7 +10,7 @@ Your goal is to provide an immersive, text-based roleplaying experience.
 Rules:
 1. Follow D&D 5e rules for checks and combat where possible in a narrative format.
 2. Provide 2-5 distinct actions the player can take next.
-3. If an action requires a dice roll, specify the dice notation (e.g., "1d20+2") and the reason.
+3. If an action requires a dice roll, specify the dice notation (e.g., "1d20+2"), the reason, and the Difficulty Class (DC).
 4. Keep descriptions vivid but concise.
 5. Describe immediate surroundings and sometimes give subtle clues about the environment.
 6. Manage the story, NPCs, and world state.
@@ -40,7 +40,8 @@ OR
   "id": "search_room",
   "description": "Search the room for hidden traps",
   "diceRoll": "1d20+3",
-  "diceReason": "Investigation check"
+  "diceReason": "Investigation check",
+  "difficultyClass": 15
 }
 `;
 }
