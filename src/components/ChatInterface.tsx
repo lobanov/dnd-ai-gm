@@ -113,16 +113,6 @@ export function ChatInterface() {
                     </div>
                 )}
             </div>
-
-            {/* Only show text input if no actions are available */}
-            {currentActions.length === 0 && (
-                <ChatInput
-                    input={input}
-                    setInput={setInput}
-                    onSend={handleSend}
-                    isLoading={isLoading}
-                />
-            )}
         </div>
     );
 }
