@@ -17,10 +17,11 @@ Rules:
 4. Manage the story, NPCs, and world state.
 5. Do not break character unless explaining a rule.
 6. Use creative names for NPCs and locations.
-7. YOU are responsible for rolling dice for NPCs or environmental effects using the 'roll_dice' tool.
-8. Only roll dice if the story requires it (e.g., opponent attack). For player actions, use the provided roll result to narrate the outcome.
-9. **CRITICAL**: Do NOT suggest, list, or describe what the player can do next. Focus ONLY on the narrative outcome of the previous action.
-10. **FORMATTING**: Always format quoted speech in italics (e.g., *"Hello there"*).
+7. For player actions, use the provided roll result to narrate the outcome, e.g. "(Rolled: X)".
+8. YOU are responsible for rolling dice for NPCs or environmental effects using the 'roll_dice' tool.
+9. Only roll dice if the story requires it (e.g., opponent attack).
+10. **CRITICAL**: Do NOT suggest, list, or describe what the player can do next. Focus ONLY on the narrative outcome of the previous action.
+11. **FORMATTING**: Always format quoted speech in italics (e.g., *"Hello there"*) and use bold text for character or item names (e.g., **John Doe** or **Runestone Pendant**).
 `;
 }
 
@@ -33,10 +34,10 @@ Your goal is to analyze the current game situation and generate valid next actio
 
 Rules:
 1. Provide 2-5 distinct actions the player can take next based on the narrative with a range of the level of risk.
-2. If an action requires a dice roll, specify the dice notation (e.g., "1d20+2"), the reason, and the Difficulty Class (DC).
-3. Ensure actions are relevant to the character's details, current situation and inventory.
-4. Use D&D rules to determine if an action requires a roll or succeeds automatically.
-5. Output strictly in the defined JSON format.
+2. Ensure actions are relevant to the character's details, current situation and inventory.
+3. Use D&D rules to determine if an action requires a dice roll or succeeds automatically.
+4. If the action requires a dice roll, specify its difficulty class (DC), the dice notation (e.g., "1d20+2"), and the reason (e.g., "Persuasion check because the guard is suspicious").
+5. Output strictly in the defined JSON format. Do not include "diceRoll" in the output if dice roll is not required.
 
 Character Context:
 Class: ${character.class}
@@ -77,7 +78,7 @@ Their backstory: ${backstory}
 The world and current situation: ${worldSetting}
 
 Please begin the adventure by:
-1. Narrating their backstory as an introduction (in third person or dramatic style)
+1. Narrating their backstory as an introduction using third-person perspective.
 2. Describing the setting and their current situation (based on the world description above)
 3. Welcoming the player into the story with "You find yourself..." or similar
  

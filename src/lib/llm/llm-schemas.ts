@@ -18,11 +18,16 @@ export const GM_ACTIONS_SCHEMA = {
                     items: {
                         type: 'object',
                         properties: {
-                            id: { type: 'string' },
                             description: { type: 'string' },
-                            diceRoll: { type: 'string', description: 'Dice notation if a roll is required (e.g. "2d6+3")' },
-                            diceReason: { type: 'string', description: 'Reason for the dice roll' },
-                            difficultyClass: { type: 'string', description: 'Difficulty Class (DC) for the check if applicable (e.g. "15")' }
+                            diceRoll: {
+                                type: 'object',
+                                properties: {
+                                    notation: { type: 'string', description: 'Dice notation (e.g. "1d20+5")' },
+                                    reason: { type: 'string', description: 'Reason for the roll' },
+                                    dc: { type: 'number', description: 'Difficulty Class (DC) for the check if applicable (e.g. "15")' }
+                                },
+                                required: ['notation', 'reason', 'dc']
+                            },
                         },
                         required: ['id', 'description']
                     }

@@ -194,23 +194,27 @@ export class HttpLLMClient implements LLMClient {
                 throw new Error('Invalid JSON response from LLM');
             }
 
-            const actions: GameAction[] = parsedActions.actions.map((a: any) => {
+            const actions: GameAction[] = parsedActions.actions.map((a: any, idx: number) => {
                 // Helper to check if a value is valid (not null, undefined, NaN, or "NaN")
                 const isValid = (val: any) => val != null && val !== 'NaN' && val !== '';
 
-                // Parse difficulty class, ensuring it's a valid number
-                let dc: number | undefined = undefined;
-                if (isValid(a.difficultyClass)) {
-                    const parsed = parseInt(String(a.difficultyClass), 10);
-                    dc = !isNaN(parsed) ? parsed : undefined;
+                const { description, diceRoll } = a;
+                const actionId = `action-${idx}`;
+                if (diceRoll) {
+                    const notation = isValid(diceRoll.notation) ? diceRoll.notation : undefined;
+                    const reason = isValid(diceRoll.reason) ? diceRoll.reason : undefined;
+                    const dc = isValid(diceRoll.dc) ? parseInt(diceRoll.dc) : undefined;
+                    return {
+                        id: actionId,
+                        description,
+                        diceRoll: notation,
+                        diceReason: reason,
+                        difficultyClass: dc
+                    };
                 }
-
                 return {
-                    id: a.id,
-                    description: a.description,
-                    diceRoll: isValid(a.diceRoll) ? a.diceRoll : undefined,
-                    diceReason: isValid(a.diceReason) ? a.diceReason : undefined,
-                    difficultyClass: dc
+                    id: actionId,
+                    description,
                 };
             });
 
