@@ -34,7 +34,7 @@ An interactive Dungeons & Dragons game powered by AI, where the LLM serves as yo
 ### Prerequisites
 
 - Node.js 20+ and npm
-- OpenAI API key
+- LiteLLM proxy running locally (or OpenAI API key)
 
 ### Installation
 
@@ -51,30 +51,34 @@ npm install
 
 3. Set up environment variables:
 ```bash
-cp .env.local.example .env.local
+cp .env.example .env.local
 ```
 
-Edit `.env.local` and add your OpenAI API key:
+Edit `.env.local` and configure the LLM model:
 ```
-OPENAI_API_KEY=your_api_key_here
+# The model name configured in your LiteLLM setup
+NEXT_PUBLIC_LLM_MODEL=gemini-1.5-flash-002
 ```
 
-4. Run the development server:
+**Note**: The app uses a Next.js rewrite to proxy LLM requests from `/api/llm/*` to `http://127.0.0.1:4000/*` (LiteLLM default endpoint). No API key is needed since LiteLLM runs locally. The rewrite is configured in `next.config.ts`.
+
+4. Start LiteLLM proxy (if not already running):
+```bash
+litellm --model gemini-1.5-flash-002
+```
+
+5. Run the development server:
 ```bash
 npm run dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+6. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Project Structure
 
 ```
 src/
 ├── app/                      # Next.js app directory
-│   ├── api/                  # API routes
-│   │   ├── chat/             # Main LLM chat endpoint
-│   │   ├── generate-character-details/
-│   │   └── generate-world/
 │   └── page.tsx              # Main application page
 ├── components/               # React components
 │   ├── character-creation/   # Character creation steps
@@ -84,7 +88,11 @@ src/
 │   ├── ChatInterface.tsx
 │   └── Tooltip.tsx
 ├── lib/                      # Business logic
-│   ├── llm/                  # LLM client and tools
+│   ├── llm/                  # LLM client and utilities
+│   │   ├── client.ts         # LLM client implementation
+│   │   ├── llm-schemas.ts    # JSON schemas for structured outputs
+│   │   ├── llm-service.ts    # LLM service layer (generation functions)
+│   │   └── types.ts          # Type definitions
 │   ├── character-creation.ts # Character creation logic
 │   ├── chat-logic.ts         # Chat message handling
 │   ├── dnd-rules.ts          # D&D 5e rules
@@ -116,9 +124,13 @@ Game logic is separated from React components for better testability:
 - **Game Logic** (`lib/game-logic.ts`): Tool call processing
 
 ### LLM Integration
-- **Client** (`lib/llm/client.ts`): HTTP client for OpenAI API
-- **Tools** (`lib/llm/gm-tools.ts`): Function definitions for LLM tool calling
-- **Hook** (`lib/llm/use-llm.ts`): React hook for LLM interaction
+The app uses OpenAI SDK on the frontend with LiteLLM proxy via Next.js rewrite:
+- **Schemas** (`lib/llm/llm-schemas.ts`): JSON schemas for structured outputs
+- **Service** (`lib/llm/llm-service.ts`): Helper functions for character/world generation  
+- **Client** (`lib/llm/client.ts`): Main LLM client for chat interactions
+- **Proxy** (`next.config.ts`): Next.js rewrite proxies `/api/llm/*` to LiteLLM at `http://127.0.0.1:4000/*`
+
+All LLM calls are made directly from the frontend, eliminating the need for backend API routes.
 
 ### State Management
 Zustand store with local storage persistence:

@@ -6,6 +6,7 @@ import { ProgressIndicator } from './character-creation/ProgressIndicator';
 import { CharacterSelectionStep } from './character-creation/CharacterSelectionStep';
 import { CharacterDetailsStep } from './character-creation/CharacterDetailsStep';
 import { WorldGenerationStep } from './character-creation/WorldGenerationStep';
+import { generateCharacterDetails, generateWorld } from '@/lib/llm/llm-service';
 
 const CLASSES = Object.keys(CLASS_PRESETS);
 const GENDERS = ['Male', 'Female'];
@@ -70,28 +71,19 @@ export function CharacterCreation() {
         setIsGeneratingDetails(true);
         setDetailsError(null);
         try {
-            const response = await fetch('/api/generate-character-details', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    characterClass: selectedClass,
-                    race: selectedRace,
-                    gender: selectedGender
-                }),
-            });
-            const data = await response.json();
-            if (data.error) {
-                setDetailsError(data.error);
-                console.error('Failed to generate details:', data.error);
-            } else {
-                setGeneratedDetails(data);
-                // Save to localStorage for future quick starts
-                localStorage.setItem(STORAGE_KEY_DETAILS, JSON.stringify(data));
-                setHasPreviousData(true);
-            }
+            const data = await generateCharacterDetails(
+                selectedGender,
+                selectedRace,
+                selectedClass
+            );
+            setGeneratedDetails(data);
+            // Save to localStorage for future quick starts
+            localStorage.setItem(STORAGE_KEY_DETAILS, JSON.stringify(data));
+            setHasPreviousData(true);
         } catch (error) {
             console.error('Failed to generate details:', error);
-            setDetailsError('Network error. Please try again.');
+            const errorMessage = error instanceof Error ? error.message : 'Network error. Please try again.';
+            setDetailsError(errorMessage);
         } finally {
             setIsGeneratingDetails(false);
         }
@@ -103,29 +95,20 @@ export function CharacterCreation() {
         setIsGeneratingWorld(true);
         setWorldError(null);
         try {
-            const response = await fetch('/api/generate-world', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: generatedDetails.name,
-                    race: selectedRace,
-                    characterClass: selectedClass,
-                    backstory: generatedDetails.backstory,
-                }),
-            });
-            const data = await response.json();
-            if (data.error) {
-                setWorldError(data.error);
-                console.error('Failed to generate world:', data.error);
-            } else {
-                setGeneratedWorld(data);
-                // Save to localStorage for future quick starts
-                localStorage.setItem(STORAGE_KEY_WORLD, JSON.stringify(data));
-                setHasPreviousData(true);
-            }
+            const data = await generateWorld(
+                generatedDetails.name,
+                selectedRace,
+                selectedClass,
+                generatedDetails.backstory
+            );
+            setGeneratedWorld(data);
+            // Save to localStorage for future quick starts
+            localStorage.setItem(STORAGE_KEY_WORLD, JSON.stringify(data));
+            setHasPreviousData(true);
         } catch (error) {
             console.error('Failed to generate world:', error);
-            setWorldError('Network error. Please try again.');
+            const errorMessage = error instanceof Error ? error.message : 'Network error. Please try again.';
+            setWorldError(errorMessage);
         } finally {
             setIsGeneratingWorld(false);
         }
