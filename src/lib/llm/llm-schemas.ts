@@ -4,17 +4,14 @@
  */
 
 // Schema for GM chat responses
-export const GM_RESPONSE_SCHEMA = {
+// Schema for GM actions generation (Phase 2)
+export const GM_ACTIONS_SCHEMA = {
     type: 'json_schema',
     json_schema: {
-        name: 'gm_response',
+        name: 'gm_actions',
         schema: {
             type: 'object',
             properties: {
-                narrative: {
-                    type: 'string',
-                    description: 'The narrative description of what happens next.'
-                },
                 actions: {
                     type: 'array',
                     description: '2-5 actions the player can take next.',
@@ -25,48 +22,13 @@ export const GM_RESPONSE_SCHEMA = {
                             description: { type: 'string' },
                             diceRoll: { type: 'string', description: 'Dice notation if a roll is required (e.g. "2d6+3")' },
                             diceReason: { type: 'string', description: 'Reason for the dice roll' },
-                            difficultyClass: { type: 'number', description: 'Difficulty Class (DC) for the check if applicable' }
+                            difficultyClass: { type: 'string', description: 'Difficulty Class (DC) for the check if applicable (e.g. "15")' }
                         },
                         required: ['id', 'description']
                     }
-                },
-                characterUpdates: {
-                    type: 'object',
-                    properties: {
-                        hp: { type: 'number' }
-                    }
-                },
-                inventoryUpdates: {
-                    type: 'object',
-                    properties: {
-                        add: {
-                            type: 'array',
-                            items: {
-                                type: 'object',
-                                properties: {
-                                    slug: { type: 'string' },
-                                    name: { type: 'string' },
-                                    description: { type: 'string' },
-                                    quantity: { type: 'number' }
-                                },
-                                required: ['slug', 'name', 'description', 'quantity']
-                            }
-                        },
-                        remove: {
-                            type: 'array',
-                            items: {
-                                type: 'object',
-                                properties: {
-                                    slug: { type: 'string' },
-                                    quantityChange: { type: 'number' }
-                                },
-                                required: ['slug', 'quantityChange']
-                            }
-                        }
-                    }
                 }
             },
-            required: ['narrative', 'actions']
+            required: ['actions']
         }
     }
 } as const;

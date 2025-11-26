@@ -1,17 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useGameStore } from '@/lib/store';
-import { Message as DndMessage } from '@/types/dnd';
 import { getInitialAdventurePrompt } from '@/lib/gm-prompts';
 import { useLLM } from '@/lib/llm/use-llm';
 import { HttpLLMClient } from '@/lib/llm/client';
-import { Message as LLMMessage } from '@/lib/llm/types';
-import { convertLlmMessageToDndMessage, processCharacterUpdates, processInventoryUpdates } from '@/lib/chat-logic';
+import { UIMessage } from '@/lib/llm/types';
 import { ChatMessage } from './chat/ChatMessage';
 import { ChatInput } from './chat/ChatInput';
+import { ActionSelector } from './chat/ActionSelector';
 
 export function ChatInterface() {
-    const { chatHistory, addMessage, character, setting, setCurrentActions } = useGameStore();
+    const { chatHistory, addUIMessage, character, setting, setCurrentActions, currentActions } = useGameStore();
     const [input, setInput] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
     const hasInitialized = useRef(false);
@@ -19,40 +18,16 @@ export function ChatInterface() {
     // Initialize LLM client
     const client = useMemo(() => new HttpLLMClient(), []);
 
-    // Callback to sync LLM messages to GameStore
-    const handleMessageReceived = (message: LLMMessage) => {
-        if (message.role === 'assistant') {
-            const aiMsg = convertLlmMessageToDndMessage(message);
-            addMessage(aiMsg);
-
-            // Update store with available actions
-            if (message.actions) {
-                setCurrentActions(message.actions);
-            }
-
-            // Process updates
-            const store = useGameStore.getState();
-            if (message.characterUpdates) {
-                processCharacterUpdates(message.characterUpdates, store);
-            }
-            if (message.inventoryUpdates) {
-                processInventoryUpdates(message.inventoryUpdates, store);
-            }
-        }
-    };
-
     const { sendMessage, isLoading } = useLLM({
         client,
-        character,
-        onMessageReceived: handleMessageReceived,
         onError: (error) => {
-            const errorMsg: DndMessage = {
+            const errorMsg: UIMessage = {
                 id: Date.now().toString(),
                 role: 'system',
                 content: `Error: ${error.message}`,
                 timestamp: Date.now(),
             };
-            addMessage(errorMsg);
+            addUIMessage(errorMsg);
         }
     });
 
@@ -67,7 +42,13 @@ export function ChatInterface() {
             if (chatHistory.length === 0 && !hasInitialized.current) {
                 hasInitialized.current = true;
                 const initialPrompt = getInitialAdventurePrompt(character, setting);
-                await sendMessage(initialPrompt);
+                // We send the initial prompt as a user message (invisible or system) or just trigger the GM
+                // Actually, getInitialAdventurePrompt returns a prompt string.
+                // We want the GM to start.
+                // In the new flow, we just send a message.
+                // But wait, the initial prompt is usually a system instruction or a user "Start game" trigger.
+                // The `getInitialAdventurePrompt` generates a prompt for the *User* to send to the GM to start.
+                await sendMessage(initialPrompt, { hidden: true });
             }
         };
 
@@ -77,17 +58,11 @@ export function ChatInterface() {
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
 
-        const userMsg: DndMessage = {
-            id: Date.now().toString(),
-            role: 'user',
-            content: input,
-            timestamp: Date.now(),
-        };
-
-        addMessage(userMsg);
+        const content = input;
         setInput('');
 
-        await sendMessage(input);
+        // sendMessage now handles adding the user message to the store
+        await sendMessage(content);
     };
 
     const handleActionSelect = async (actionId: string, actionText: string, diceTotal?: number) => {
@@ -98,16 +73,9 @@ export function ChatInterface() {
             ? `I choose action: "${actionText}" (Rolled: ${diceTotal})`
             : `I choose action: "${actionText}"`;
 
-        const userMsg: DndMessage = {
-            id: Date.now().toString(),
-            role: 'user',
-            content: content,
-            timestamp: Date.now(),
-        };
-
-        addMessage(userMsg);
         setCurrentActions([]); // Clear actions while waiting
 
+        // sendMessage now handles adding the user message to the store
         await sendMessage(content);
     };
 
@@ -122,9 +90,8 @@ export function ChatInterface() {
                 {chatHistory.map((msg, idx) => (
                     <ChatMessage
                         key={msg.id}
-                        message={msg}
+                        message={msg as any} // Cast to any or compatible type if needed
                         isLastMessage={idx === chatHistory.length - 1}
-                        onActionSelect={handleActionSelect}
                     />
                 ))}
                 {isLoading && (
@@ -135,10 +102,20 @@ export function ChatInterface() {
                         </div>
                     </div>
                 )}
+
+                {/* Show Actions inline in history if available */}
+                {currentActions.length > 0 && (
+                    <div className="mt-4">
+                        <ActionSelector
+                            actions={currentActions}
+                            onActionSelect={handleActionSelect}
+                        />
+                    </div>
+                )}
             </div>
 
-            {/* Only show text input if no actions are available (e.g. initial setup or error recovery) */}
-            {(!chatHistory.length || chatHistory[chatHistory.length - 1]?.meta?.type !== 'action_request') && (
+            {/* Only show text input if no actions are available */}
+            {currentActions.length === 0 && (
                 <ChatInput
                     input={input}
                     setInput={setInput}

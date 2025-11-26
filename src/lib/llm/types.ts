@@ -1,13 +1,27 @@
-export type Role = 'user' | 'assistant' | 'system';
+export type Role = 'user' | 'assistant' | 'system' | 'tool';
 
-export interface UserMessage {
-    role: 'user';
-    content: string;
+export interface ToolCall {
+    id: string;
+    type: 'function';
+    function: {
+        name: string;
+        arguments: string;
+    };
 }
 
-export interface SystemMessage {
-    role: 'system';
+export interface UIMessage {
+    id: string;
+    role: 'user' | 'assistant' | 'system';
     content: string;
+    timestamp: number;
+}
+
+export interface LLMMessage {
+    role: Role;
+    content: string | null;
+    tool_calls?: ToolCall[];
+    tool_call_id?: string;
+    name?: string;
 }
 
 export interface GameAction {
@@ -27,6 +41,7 @@ export interface InventoryUpdates {
     remove?: Array<{ slug: string; quantityChange: number }>;
 }
 
+// Combined response from the LLM Service to the UI
 export interface AssistantMessage {
     role: 'assistant';
     content: string; // narrative
@@ -35,12 +50,14 @@ export interface AssistantMessage {
     inventoryUpdates?: InventoryUpdates;
 }
 
-export type Message = UserMessage | SystemMessage | AssistantMessage;
-
 export interface LLMResponse {
     message: AssistantMessage;
+    // We might want to return the raw LLM history updates too, but for now let's keep it simple
+    // and let the hook manage the history based on the response.
+    // Actually, the client needs to return the updated LLM history because of the tool loops.
+    llmHistoryUpdates: LLMMessage[];
 }
 
 export interface LLMClient {
-    sendMessage(messages: Message[], character: any): Promise<LLMResponse>;
+    sendMessage(history: LLMMessage[], character: any): Promise<LLMResponse>;
 }

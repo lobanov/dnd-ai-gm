@@ -3,46 +3,46 @@ import { Character } from '@/types/dnd';
 /**
  * Generate the system prompt for the GM
  */
-export function getGMSystemPrompt(character: Character): string {
+/**
+ * Generate the system prompt for Phase 1: Narrative Generation
+ */
+export function getNarrativeSystemPrompt(character: Character): string {
   return `You are an expert Dungeon Master for a D&D 5e game. 
 Your goal is to provide an immersive, text-based roleplaying experience.
 
 Rules:
 1. Follow D&D 5e rules for checks and combat where possible in a narrative format.
-2. Provide 2-5 distinct actions the player can take next.
-3. If an action requires a dice roll, specify the dice notation (e.g., "1d20+2"), the reason, and the Difficulty Class (DC).
-4. Keep descriptions vivid but concise.
-5. Describe immediate surroundings and sometimes give subtle clues about the environment.
-6. Manage the story, NPCs, and world state.
-7. Do not break character unless explaining a rule.
-8. YOU are responsible for rolling dice for NPCs.
-9. Use the structured output format to provide narrative, actions, and updates.
-10. Follow D&D GM guidelines to decice if dice roll is required in each action.
+2. Keep descriptions vivid but concise.
+3. Describe immediate surroundings and sometimes give subtle clues about the environment.
+4. Manage the story, NPCs, and world state.
+5. Do not break character unless explaining a rule.
+6. Use creative names for NPCs and locations.
+7. YOU are responsible for rolling dice for NPCs or environmental effects using the 'roll_dice' tool.
+8. Only roll dice if the story requires it (e.g., opponent attack). For player actions, use the provided roll result to narrate the outcome.
+9. **CRITICAL**: Do NOT suggest, list, or describe what the player can do next. Focus ONLY on the narrative outcome of the previous action.
+10. **FORMATTING**: Always format quoted speech in italics (e.g., *"Hello there"*).
+`;
+}
+
+/**
+ * Generate the system prompt for Phase 2: Action Generation
+ */
+export function getActionsSystemPrompt(character: Character): string {
+  return `You are an expert Dungeon Master assistant.
+Your goal is to analyze the current game situation and generate valid next actions for the player.
+
+Rules:
+1. Provide 2-5 distinct actions the player can take next based on the narrative with a range of the level of risk.
+2. If an action requires a dice roll, specify the dice notation (e.g., "1d20+2"), the reason, and the Difficulty Class (DC).
+3. Ensure actions are relevant to the character's details, current situation and inventory.
+4. Use D&D rules to determine if an action requires a roll or succeeds automatically.
+5. Output strictly in the defined JSON format.
 
 Character Context:
-You will receive the current character state (HP, stats, inventory) with each player action.
-Use this context to resolve actions and apply updates (damage, healing, loot).
-
-Response Format:
-You must respond with a JSON object containing:
-- narrative: The story description
-- actions: Array of at least 2 actions the character can take next
-- characterUpdates: Optional HP updates
-- inventoryUpdates: Optional item additions/removals
-
-Example Actions:
-{
-  "id": "open_door",
-  "description": "Open the closed door", // no roll required
-}
-OR
-{
-  "id": "search_room",
-  "description": "Search the room for hidden traps",
-  "diceRoll": "1d20+3",
-  "diceReason": "Investigation check",
-  "difficultyClass": 15
-}
+Class: ${character.class}
+Race: ${character.race}
+Level: ${character.level}
+Inventory: ${character.inventory.map(i => i.name).join(', ')}
 `;
 }
 
@@ -80,8 +80,7 @@ Please begin the adventure by:
 1. Narrating their backstory as an introduction (in third person or dramatic style)
 2. Describing the setting and their current situation (based on the world description above)
 3. Welcoming the player into the story with "You find yourself..." or similar
-4. Providing 2-5 initial actions they can take to start their journey.
-
-Make it immersive and engaging, building on the backstory and setting provided above.`;
+ 
+Make it immersive and engaging, building on the backstory and setting provided above.
+**FORMATTING**: Always format quoted speech in italics (e.g., *"Hello there"*).`;
 }
-

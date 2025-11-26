@@ -1,18 +1,15 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Message as DndMessage, GameAction } from '@/types/dnd';
-import { ActionSelector } from './ActionSelector';
+import { UIMessage } from '@/lib/llm/types';
 
 interface ChatMessageProps {
-    message: DndMessage;
-    onActionSelect?: (actionId: string, actionText: string, diceTotal?: number) => void;
+    message: UIMessage;
     isLastMessage?: boolean;
+    // onActionSelect is no longer needed here as actions are rendered outside
 }
 
-export function ChatMessage({ message, onActionSelect, isLastMessage }: ChatMessageProps) {
-    const actions = message.meta?.type === 'action_request' ? message.meta.actions : undefined;
-
+export function ChatMessage({ message }: ChatMessageProps) {
     return (
         <div
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -52,14 +49,6 @@ export function ChatMessage({ message, onActionSelect, isLastMessage }: ChatMess
                     >
                         {message.content || ''}
                     </ReactMarkdown>
-                )}
-
-                {/* Display actions if this is the latest message and actions are available */}
-                {actions && actions.length > 0 && isLastMessage && onActionSelect && (
-                    <ActionSelector
-                        actions={actions}
-                        onActionSelect={onActionSelect}
-                    />
                 )}
             </div>
         </div>

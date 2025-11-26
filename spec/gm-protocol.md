@@ -2,194 +2,143 @@
 
 This document describes the interaction protocol between the frontend (UI/React) and the backend (LLM/API) in the D&D AI Game Master application.
 
-**Current Architecture**: Structured Output (JSON Mode)
-**Previous Architecture**: Tool Calling Loop (Deprecated)
+**Current Architecture**: Two-Phase Generation (Narrative -> Actions) with Decoupled State
+**Previous Architecture**: Single-Turn Structured Output (Deprecated)
 
 ---
 
 ## Overview
 
-The application uses a **Structured Output** protocol where:
-1.  **User sends a message** (or selects an action).
-2.  **Backend generates a single structured response** containing:
-    -   Narrative text
-    -   Available next actions
-    -   State updates (HP, Inventory)
-3.  **Frontend applies updates immediately** and displays the narrative.
+The application uses a **Two-Phase** protocol to ensure high-quality narrative and valid game actions:
 
-Unlike the previous tool-calling loop, this approach is **single-turn**: the LLM decides everything (narrative, outcomes, state changes) in one pass, ensuring consistency and reducing latency.
+1.  **Phase 1: Narrative Generation**
+    -   The GM generates the story response in rich text (Markdown).
+    -   The GM can use tools (e.g., `roll_dice`) *during* this phase if the story requires it (e.g., an enemy attacks).
+    -   **Output**: Pure text (narrative).
+
+2.  **Phase 2: Action Generation**
+    -   The GM analyzes the generated narrative and the current state.
+    -   The GM produces a structured list of valid actions the player can take next.
+    -   **Output**: JSON (list of actions).
+
+This split approach allows for:
+-   **Rich Narrative**: The LLM isn't constrained by JSON schema for the story, allowing for better formatting and flow.
+-   **Valid Actions**: Actions are generated in a dedicated step with strict schema enforcement.
+-   **Decoupled State**: The UI history (what the player sees) is separate from the LLM history (context window), preventing context pollution.
 
 ---
 
-## Message Types
+## Message Types & State
 
-### Frontend → Backend
+We maintain two separate histories:
 
-The frontend sends the conversation history and current character context to `/api/chat`:
-
+### 1. UI History (`UIMessage`)
+What the player sees in the chat interface.
 ```typescript
-interface ChatRequest {
-  messages: Message[];
-  character: Character; // Full character state for context
-}
-
-interface Message {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
-```
-
-**Context Management**:
--   **Narrative Focus**: The message history sent to the LLM should primarily contain the narrative flow.
--   **Action Stripping**: Previous structured actions (the buttons the user clicked) are generally *not* included in the history as raw JSON. Instead, the user's *selection* is recorded as a user message (e.g., "I search the room").
-
-### Backend → Frontend
-
-The backend returns a structured response derived from the LLM's JSON output:
-
-```typescript
-interface LLMResponse {
-  message: AssistantMessage;
-}
-
-interface AssistantMessage {
-  role: 'assistant';
-  content: string; // The main narrative
-  
-  // Structured Data
-  actions: GameAction[];
-  characterUpdates?: CharacterUpdates;
-  inventoryUpdates?: InventoryUpdates;
-}
-
-interface GameAction {
+interface UIMessage {
   id: string;
-  description: string;
-  diceRoll?: string;   // e.g., "1d20+5"
-  diceReason?: string; // e.g., "Investigation check"
-  difficultyClass?: number; // DC for the check
+  role: 'user' | 'assistant' | 'system';
+  content: string; // Markdown supported
+  timestamp: number;
 }
 ```
 
----
-
-## Structured Response Protocol
-
-### JSON Schema
-
-The backend enforces a strict JSON schema on the LLM using OpenAI's `response_format`. This ensures the LLM *always* returns valid data for the game engine.
-
-**Schema Definition** (`src/app/api/chat/route.ts`):
-
-```json
-{
-  "type": "json_schema",
-  "json_schema": {
-    "name": "gm_response",
-    "schema": {
-      "type": "object",
-      "properties": {
-        "narrative": { "type": "string" },
-        "actions": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": { "type": "string" },
-              "description": { "type": "string" },
-              "diceRoll": { "type": "string" },
-              "diceReason": { "type": "string" },
-              "difficultyClass": { "type": "number" }
-            },
-            "required": ["id", "description"]
-          }
-        },
-        "characterUpdates": {
-          "type": "object",
-          "properties": {
-            "hp": { "type": "number" }
-          }
-        },
-        "inventoryUpdates": {
-          "type": "object",
-          "properties": {
-            "add": { "type": "array", "items": { ... } },
-            "remove": { "type": "array", "items": { ... } }
-          }
-        }
-      },
-      "required": ["narrative", "actions"]
-    }
-  }
+### 2. LLM History (`LLMMessage`)
+The actual context sent to the LLM.
+```typescript
+interface LLMMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  name?: string;
 }
 ```
 
-### System Prompt
-
-The system prompt (`src/lib/gm-prompts.ts`) instructs the GM to:
-1.  Act as an expert Dungeon Master.
-2.  Manage rules, story, and world state.
-3.  **Determine outcomes internally**: Instead of asking the frontend to roll dice, the GM decides if a roll is needed for *future* actions, or narrates the result of *past* actions based on the user's input.
-4.  **Specify Difficulty**: For actions requiring rolls, the GM must provide the Difficulty Class (DC).
-5.  Output strictly in the defined JSON format.
+**Key Difference**:
+-   **UI**: Shows "I attack the goblin" (User) -> "The goblin dodges..." (Assistant).
+-   **LLM**: May contain tool calls and intermediate steps that are hidden from the UI to keep it clean.
 
 ---
 
 ## Interaction Flow
 
 ### 1. User Action
-The user types a message ("I kick down the door") or clicks a pre-defined action button.
-**Note**: When a user clicks an action button, the frontend sends the **full description** of the action (e.g., "I search the room for traps") as the user message, not just the ID. This ensures the LLM has the full context of what was attempted.
+The user types a message or clicks an action.
+-   **UI Update**: The action is immediately added to `UIMessage` history.
+-   **LLM Update**: The action is added to `LLMMessage` history.
 
-### 2. Backend Processing
-The backend:
-1.  Injects the **System Prompt**.
-2.  Injects the **Character Context** (stats, inventory) so the GM knows what the player has.
-3.  Sends the **Conversation History**.
-4.  Requests a **JSON completion** from the LLM.
+### 2. Phase 1: Narrative Generation
+The backend sends the `LLMMessage` history to the LLM.
 
-### 3. LLM Decision
-The LLM processes the input and decides:
--   **Narrative**: "You kick the door with all your might..."
--   **Consequences**: Did the door break? Did the player take damage?
--   **Next Options**: What can the player do now? (Enter room, Listen, etc.)
+**System Prompt Instructions**:
+-   "Do NOT describe what the player can do next."
+-   "Only roll dice if the story requires it (e.g., opponent attack). For player actions, use the provided roll result to narrate the outcome."
 
-It constructs the JSON object:
+**Process**:
+1.  LLM generates text.
+2.  **Tool Use**: If the LLM wants to roll dice (e.g., for an NPC), it calls `roll_dice`.
+    -   Backend executes tool.
+    -   Result is appended to `LLMMessage` history.
+    -   LLM is called again with the tool result.
+3.  **Completion**: LLM finishes the narrative.
+
+**Result**:
+-   The final narrative text is added to `UIMessage` history (displayed to user).
+-   The final narrative text is added to `LLMMessage` history (context for next phase).
+
+### 3. Phase 2: Action Generation
+The backend asks the LLM to generate actions based on the new narrative.
+
+**Input**:
+-   Full `LLMMessage` history (including the just-generated narrative).
+
+**Output Schema** (`GM_ACTIONS_SCHEMA`):
 ```json
 {
-  "narrative": "The door splinters and crashes open! You take 1 point of bruising damage from the impact.",
-  "characterUpdates": { "hp": 14 },
   "actions": [
-    { "id": "enter", "description": "Enter the room" },
-    { "id": "listen", "description": "Listen for enemies", "diceRoll": "1d20+2", "diceReason": "Perception", "difficultyClass": 15 }
+    {
+      "id": "attack",
+      "description": "Attack the goblin",
+      "diceRoll": "1d20+5",
+      "diceReason": "Attack Roll",
+      "difficultyClass": 12
+    }
   ]
 }
 ```
 
-### 4. Frontend Execution
-The frontend receives the response and:
-1.  **Updates State**: Applies `characterUpdates` (HP) and `inventoryUpdates` immediately to the Zustand store.
-2.  **Displays Narrative**: Shows the text in the chat window.
-3.  **Presents Actions**: Renders the `actions` as clickable buttons for the user.
+**Result**:
+-   The actions are sent to the UI to be rendered as buttons.
+-   They are *not* permanently added to the history until the user selects one.
 
 ---
 
-## State Management
+## State Management (Zustand)
 
-### Backend (Stateless)
-The backend remains stateless. It relies on the frontend to provide the full `messages` history and the current `character` state with every request.
+The frontend store manages the two histories:
 
-### Frontend (Zustand)
-The frontend is the "source of truth" for the game state.
--   **Character Store**: Holds HP, stats, inventory. Updated by `characterUpdates` / `inventoryUpdates`.
--   **Chat Store**: Holds the message history. Updated by `narrative`.
--   **Action State**: Holds the list of currently available actions.
+```typescript
+interface GameStore {
+  // ...
+  chatHistory: UIMessage[];
+  llmHistory: LLMMessage[];
+  
+  // Actions
+  addUIMessage: (msg: UIMessage) => void;
+  addLLMMessage: (msg: LLMMessage) => void;
+}
+```
+
+### Resetting
+When `resetGame` is called, both histories are cleared.
 
 ---
 
-## Key Benefits of New Protocol
+## Benefits
 
-1.  **Reliability**: JSON Schema guarantees the UI always has valid actions to render.
-2.  **Simplicity**: Removes the complex recursive loop of tool calls.
-3.  **Context Awareness**: The GM always has the latest character state injected into the prompt, preventing hallucinations about inventory or HP.
-4.  **Atomic Updates**: Narrative and state changes happen together, preventing desync (e.g., text says "you found a sword" but inventory didn't update).
+1.  **Better Storytelling**: Narrative is not constrained by JSON structure.
+2.  **Clean UI**: Players don't see tool calls or JSON blobs.
+3.  **Robust Context**: LLM sees exactly what happened (including tool results), while UI stays player-focused.
+4.  **Valid Actions**: Dedicated step ensures actions always match the current situation.
+

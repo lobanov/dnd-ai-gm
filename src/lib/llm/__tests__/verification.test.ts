@@ -1,6 +1,6 @@
 
 import { HttpLLMClient } from '../client';
-import { Message, LLMResponse } from '../types';
+import { LLMMessage, LLMResponse } from '../types';
 
 // Mock OpenAI
 jest.mock('openai', () => {
@@ -38,19 +38,35 @@ describe('HttpLLMClient', () => {
 
     it('sends messages and returns response', async () => {
         const OpenAI = require('openai').default;
-        const mockCreate = jest.fn().mockResolvedValue({
-            choices: [{
-                message: {
-                    content: JSON.stringify({
-                        narrative: 'Hello adventurer!',
-                        actions: [
-                            { id: 'action-1', description: 'Do something', diceRoll: '1d20', diceReason: 'Check' }
-                        ],
-                        characterUpdates: { hp: 10 },
-                        inventoryUpdates: { add: [], remove: [] }
-                    })
-                }
-            }]
+
+        // Mock the two-phase response
+        let callCount = 0;
+        const mockCreate = jest.fn().mockImplementation(() => {
+            callCount++;
+            if (callCount === 1) {
+                // Phase 1: Narrative generation (plain text)
+                return Promise.resolve({
+                    choices: [{
+                        message: {
+                            role: 'assistant',
+                            content: 'Hello adventurer!'
+                        }
+                    }]
+                });
+            } else {
+                // Phase 2: Action generation (JSON)
+                return Promise.resolve({
+                    choices: [{
+                        message: {
+                            content: JSON.stringify({
+                                actions: [
+                                    { id: 'action-1', description: 'Do something', diceRoll: '1d20', diceReason: 'Check' }
+                                ]
+                            })
+                        }
+                    }]
+                });
+            }
         });
 
         OpenAI.mockImplementation(() => ({
@@ -61,7 +77,7 @@ describe('HttpLLMClient', () => {
             }
         }));
 
-        const messages: Message[] = [{ role: 'user', content: 'Hi' }];
+        const messages: LLMMessage[] = [{ role: 'user', content: 'Hi' }];
         const character = {
             name: 'Test',
             class: 'Fighter',
@@ -70,12 +86,14 @@ describe('HttpLLMClient', () => {
             maxHp: 10,
             stats: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
             race: 'Human',
+            gender: 'Male',
             backstory: 'A brave fighter',
-            inventory: []
+            inventory: [],
+            skills: []
         };
         const response = await client.sendMessage(messages, character);
 
-        expect(mockCreate).toHaveBeenCalled();
+        expect(mockCreate).toHaveBeenCalledTimes(2); // Two phases
         expect(response.message.content).toBe('Hello adventurer!');
         expect(response.message.actions).toHaveLength(1);
         expect(response.message.actions![0].id).toBe('action-1');
@@ -85,7 +103,7 @@ describe('HttpLLMClient', () => {
         process.env.NEXT_PUBLIC_LLM_MODEL = undefined;
 
         const client2 = new HttpLLMClient();
-        const messages: Message[] = [{ role: 'user', content: 'Hi' }];
+        const messages: LLMMessage[] = [{ role: 'user', content: 'Hi' }];
         const character = {
             name: 'Test',
             class: 'Fighter',
@@ -94,8 +112,10 @@ describe('HttpLLMClient', () => {
             maxHp: 10,
             stats: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
             race: 'Human',
+            gender: 'Male',
             backstory: 'A brave fighter',
-            inventory: []
+            inventory: [],
+            skills: []
         };
 
         await expect(client2.sendMessage(messages, character)).rejects.toThrow('NEXT_PUBLIC_LLM_MODEL environment variable is not configured');

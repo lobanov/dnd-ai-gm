@@ -1,16 +1,26 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Character, GameState, Message, Item, GameAction } from '@/types/dnd';
+import { Character, GameState, Item } from '@/types/dnd';
+import { UIMessage, LLMMessage, GameAction } from '@/lib/llm/types';
 import { INITIAL_CHARACTER } from '@/lib/dnd-rules';
 
 export interface GameStore extends GameState {
     isGameStarted: boolean;
     currentActions: GameAction[];
+
+    // Decoupled Histories
+    chatHistory: UIMessage[]; // For UI display
+    llmHistory: LLMMessage[]; // For LLM context
+
     startGame: () => void;
     setCharacter: (character: Character) => void;
     updateCharacter: (updates: Partial<Character>) => void;
-    addMessage: (message: Message) => void;
-    updateMessage: (id: string, updates: Partial<Message>) => void;
+
+    // Message Actions
+    addUIMessage: (message: UIMessage) => void;
+    addLLMMessage: (message: LLMMessage) => void;
+    setLLMHistory: (history: LLMMessage[]) => void;
+
     clearChat: () => void;
     addItem: (item: Item) => void;
     removeItem: (itemId: string) => void;
@@ -24,6 +34,7 @@ export const useGameStore = create<GameStore>()(
         (set) => ({
             character: INITIAL_CHARACTER,
             chatHistory: [],
+            llmHistory: [],
             isConfigured: false,
             isGameStarted: false,
             setting: undefined,
@@ -38,19 +49,19 @@ export const useGameStore = create<GameStore>()(
                     character: { ...state.character, ...updates },
                 })),
 
-            addMessage: (message) =>
+            addUIMessage: (message) =>
                 set((state) => ({
                     chatHistory: [...state.chatHistory, message],
                 })),
 
-            updateMessage: (id, updates) =>
+            addLLMMessage: (message) =>
                 set((state) => ({
-                    chatHistory: state.chatHistory.map((msg) =>
-                        msg.id === id ? { ...msg, ...updates } : msg
-                    ),
+                    llmHistory: [...state.llmHistory, message],
                 })),
 
-            clearChat: () => set({ chatHistory: [] }),
+            setLLMHistory: (history) => set({ llmHistory: history }),
+
+            clearChat: () => set({ chatHistory: [], llmHistory: [] }),
 
             addItem: (item) =>
                 set((state) => ({
@@ -80,6 +91,7 @@ export const useGameStore = create<GameStore>()(
                         gender: state.character.gender,
                     },
                     chatHistory: [],
+                    llmHistory: [],
                     isGameStarted: false,
                     setting: undefined,
                     currentActions: [],
