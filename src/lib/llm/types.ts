@@ -48,6 +48,7 @@ export interface AssistantMessage {
     actions?: GameAction[];
     characterUpdates?: CharacterUpdates;
     inventoryUpdates?: InventoryUpdates;
+    tool_calls?: ToolCall[];
 }
 
 export interface LLMResponse {

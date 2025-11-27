@@ -74,6 +74,10 @@ export class HttpLLMClient implements LLMClient {
             let narrative = '';
             let finishedNarrative = false;
 
+            // Track state updates from tools
+            let characterUpdates: any = {};
+            let inventoryUpdates: any = { add: [], remove: [] };
+
             // Tool loop for narrative phase
             while (!finishedNarrative) {
                 const completion = await client.chat.completions.create({
@@ -92,6 +96,56 @@ export class HttpLLMClient implements LLMClient {
                                         reason: { type: 'string', description: 'Reason for the roll' }
                                     },
                                     required: ['notation', 'reason']
+                                }
+                            }
+                        },
+                        {
+                            type: 'function',
+                            function: {
+                                name: 'update_hp',
+                                description: 'Update character HP (damage or healing).',
+                                parameters: {
+                                    type: 'object',
+                                    properties: {
+                                        hp: { type: 'number', description: 'New HP value' },
+                                        reason: { type: 'string', description: 'Reason for change' }
+                                    },
+                                    required: ['hp', 'reason']
+                                }
+                            }
+                        },
+                        {
+                            type: 'function',
+                            function: {
+                                name: 'update_inventory',
+                                description: 'Add or remove items from inventory.',
+                                parameters: {
+                                    type: 'object',
+                                    properties: {
+                                        add: {
+                                            type: 'array',
+                                            items: {
+                                                type: 'object',
+                                                properties: {
+                                                    name: { type: 'string' },
+                                                    description: { type: 'string' },
+                                                    quantity: { type: 'number' }
+                                                },
+                                                required: ['name', 'description', 'quantity']
+                                            }
+                                        },
+                                        remove: {
+                                            type: 'array',
+                                            items: {
+                                                type: 'object',
+                                                properties: {
+                                                    slug: { type: 'string', description: 'Item name/slug to remove' },
+                                                    quantityChange: { type: 'number', description: 'Negative number for removal amount' }
+                                                },
+                                                required: ['slug', 'quantityChange']
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -120,30 +174,34 @@ export class HttpLLMClient implements LLMClient {
 
                     // Execute tools
                     for (const toolCall of message.tool_calls) {
-                        // Cast to any to avoid TS issues with the specific OpenAI version types
                         const tc = toolCall as any;
-                        if (tc.function && tc.function.name === 'roll_dice') {
-                            const args = JSON.parse(tc.function.arguments);
-                            // Simple dice roller implementation
-                            // In a real app, we might want a shared dice service
-                            // For now, just parse and roll
-                            // Assuming simple XdY+Z format
-                            // This is a placeholder logic for the tool execution
+                        const args = JSON.parse(tc.function.arguments);
+                        let toolResultContent = '';
+
+                        if (tc.function.name === 'roll_dice') {
                             const rollResult = Math.floor(Math.random() * 20) + 1; // Simplified d20
-
-                            const toolMsg: OpenAI.Chat.ChatCompletionToolMessageParam = {
-                                role: 'tool',
-                                tool_call_id: toolCall.id,
-                                content: JSON.stringify({ result: rollResult, details: `Rolled ${args.notation} for ${args.reason}` })
-                            };
-                            currentMessages.push(toolMsg);
-
-                            newLLMMessages.push({
-                                role: 'tool',
-                                tool_call_id: toolCall.id,
-                                content: toolMsg.content as string
-                            });
+                            toolResultContent = JSON.stringify({ result: rollResult, details: `Rolled ${args.notation} for ${args.reason}` });
+                        } else if (tc.function.name === 'update_hp') {
+                            characterUpdates.hp = args.hp;
+                            toolResultContent = JSON.stringify({ success: true, message: `HP updated to ${args.hp}` });
+                        } else if (tc.function.name === 'update_inventory') {
+                            if (args.add) inventoryUpdates.add.push(...args.add);
+                            if (args.remove) inventoryUpdates.remove.push(...args.remove);
+                            toolResultContent = JSON.stringify({ success: true, message: 'Inventory updated' });
                         }
+
+                        const toolMsg: OpenAI.Chat.ChatCompletionToolMessageParam = {
+                            role: 'tool',
+                            tool_call_id: toolCall.id,
+                            content: toolResultContent
+                        };
+                        currentMessages.push(toolMsg);
+
+                        newLLMMessages.push({
+                            role: 'tool',
+                            tool_call_id: toolCall.id,
+                            content: toolMsg.content as string
+                        });
                     }
                 } else {
                     // No tool calls, we have our narrative
@@ -224,11 +282,8 @@ export class HttpLLMClient implements LLMClient {
                     role: 'assistant',
                     content: narrative,
                     actions: actions,
-                    // Character/Inventory updates are currently not in the narrative schema
-                    // We might need to parse them from text or add them to Phase 2 schema if needed
-                    // For now, assuming they are handled via tools or separate logic if we want them back
-                    // The prompt says "narrative only" for Phase 1 and "actions" for Phase 2.
-                    // If we need state updates, we should add them to Phase 2 schema.
+                    characterUpdates: Object.keys(characterUpdates).length > 0 ? characterUpdates : undefined,
+                    inventoryUpdates: (inventoryUpdates.add.length > 0 || inventoryUpdates.remove.length > 0) ? inventoryUpdates : undefined
                 },
                 llmHistoryUpdates: newLLMMessages
             };

@@ -26,7 +26,7 @@ export const GM_ACTIONS_SCHEMA = {
                                     reason: { type: 'string', description: 'Reason for the roll' },
                                     dc: { type: 'number', description: 'Difficulty Class (DC) for the check if applicable (e.g. "15")' }
                                 },
-                                required: ['notation', 'reason', 'dc']
+                                required: ['notation', 'reason']
                             },
                         },
                         required: ['id', 'description']

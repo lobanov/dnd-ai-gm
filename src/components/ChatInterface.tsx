@@ -10,7 +10,7 @@ import { ChatInput } from './chat/ChatInput';
 import { ActionSelector } from './chat/ActionSelector';
 
 export function ChatInterface() {
-    const { chatHistory, addUIMessage, character, setting, setCurrentActions, currentActions } = useGameStore();
+    const { chatHistory, addUIMessage, removeUIMessage, character, setting, setCurrentActions, currentActions } = useGameStore();
     const [input, setInput] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
     const hasInitialized = useRef(false);
@@ -79,6 +79,29 @@ export function ChatInterface() {
         await sendMessage(content);
     };
 
+    const handleRetry = async (errorMessage: UIMessage) => {
+        // Find the user message that preceded this error
+        const errorIndex = chatHistory.findIndex(m => m.id === errorMessage.id);
+        if (errorIndex <= 0) return; // No previous message or error not found
+
+        // Find the last user message before the error
+        let userMessageIndex = errorIndex - 1;
+        while (userMessageIndex >= 0 && chatHistory[userMessageIndex].role !== 'user') {
+            userMessageIndex--;
+        }
+
+        if (userMessageIndex < 0) return; // No user message found
+
+        const userMessage = chatHistory[userMessageIndex];
+
+        // Remove both the error message and the original user message
+        removeUIMessage(errorMessage.id);
+        removeUIMessage(userMessage.id);
+
+        // Resend the user's message (this will add a new user message)
+        await sendMessage(userMessage.content);
+    };
+
     return (
         <div className="flex flex-col h-full bg-slate-950 text-slate-200 rounded-lg overflow-hidden border border-slate-800">
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -92,6 +115,7 @@ export function ChatInterface() {
                         key={msg.id}
                         message={msg as any} // Cast to any or compatible type if needed
                         isLastMessage={idx === chatHistory.length - 1}
+                        onRetry={handleRetry}
                     />
                 ))}
                 {isLoading && (
@@ -112,6 +136,16 @@ export function ChatInterface() {
                         />
                     </div>
                 )}
+            </div>
+            <div className="p-4 bg-slate-900 border-t border-slate-800">
+                <ChatInput
+                    onSend={handleSend}
+                    isLoading={isLoading}
+                    input={input}
+                    setInput={setInput}
+                    disabled={isLoading || currentActions.length > 0}
+                    placeholder={currentActions.length > 0 ? "Select an action above..." : "What do you do?"}
+                />
             </div>
         </div>
     );

@@ -18,12 +18,11 @@ export interface GameStore extends GameState {
 
     // Message Actions
     addUIMessage: (message: UIMessage) => void;
+    removeUIMessage: (id: string) => void;
     addLLMMessage: (message: LLMMessage) => void;
     setLLMHistory: (history: LLMMessage[]) => void;
 
     clearChat: () => void;
-    addItem: (item: Item) => void;
-    removeItem: (itemId: string) => void;
     setSetting: (setting: string) => void;
     resetGame: () => void;
     setCurrentActions: (actions: GameAction[]) => void;
@@ -54,6 +53,11 @@ export const useGameStore = create<GameStore>()(
                     chatHistory: [...state.chatHistory, message],
                 })),
 
+            removeUIMessage: (id: string) =>
+                set((state) => ({
+                    chatHistory: state.chatHistory.filter((m) => m.id !== id),
+                })),
+
             addLLMMessage: (message) =>
                 set((state) => ({
                     llmHistory: [...state.llmHistory, message],
@@ -62,22 +66,6 @@ export const useGameStore = create<GameStore>()(
             setLLMHistory: (history) => set({ llmHistory: history }),
 
             clearChat: () => set({ chatHistory: [], llmHistory: [] }),
-
-            addItem: (item) =>
-                set((state) => ({
-                    character: {
-                        ...state.character,
-                        inventory: [...state.character.inventory, item],
-                    },
-                })),
-
-            removeItem: (itemId) =>
-                set((state) => ({
-                    character: {
-                        ...state.character,
-                        inventory: state.character.inventory.filter((i) => i.id !== itemId),
-                    },
-                })),
 
             setSetting: (setting) => set({ setting }),
 

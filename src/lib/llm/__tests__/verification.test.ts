@@ -96,7 +96,7 @@ describe('HttpLLMClient', () => {
         expect(mockCreate).toHaveBeenCalledTimes(2); // Two phases
         expect(response.message.content).toBe('Hello adventurer!');
         expect(response.message.actions).toHaveLength(1);
-        expect(response.message.actions![0].id).toBe('action-1');
+        expect(response.message.actions![0].id).toBe('action-0');
     });
 
     it('throws error on missing environment variable', async () => {
